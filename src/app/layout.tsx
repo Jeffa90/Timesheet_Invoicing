@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
+import { signOutAction } from '@/lib/actions/auth';
+import { getSessionUser } from '@/lib/session';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -23,7 +25,9 @@ const NAV = [
   { href: '/help', label: 'Help' },
 ] as const;
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const user = await getSessionUser();
+
   return (
     <html lang="en-AU">
       <body className="min-h-dvh">
@@ -47,17 +51,27 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="hidden sm:inline">Shift &amp; Invoice</span>
             </Link>
 
-            <nav aria-label="Main" className="flex items-center gap-1">
-              {NAV.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft hover:bg-surface-sunk hover:text-ink"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            {user && (
+              <nav aria-label="Main" className="flex items-center gap-1">
+                {NAV.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft hover:bg-surface-sunk hover:text-ink"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+                <form action={signOutAction}>
+                  <button
+                    type="submit"
+                    className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft hover:bg-surface-sunk hover:text-ink"
+                  >
+                    Log out
+                  </button>
+                </form>
+              </nav>
+            )}
           </div>
         </header>
 

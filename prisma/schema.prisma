@@ -147,7 +147,9 @@ model Engagement {
   user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   rateCard RateCard     @relation(fields: [rateCardId], references: [id])
 
-  @@index([orgId, userId])
+  /// One current engagement per worker per business. Re-engaging after a gap is a
+  /// later feature; for now accepting an invite always targets this single row.
+  @@unique([orgId, userId])
 }
 
 // ------------------------------------------------------- pricing configuration

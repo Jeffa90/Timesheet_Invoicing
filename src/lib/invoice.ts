@@ -31,6 +31,8 @@ export interface InvoiceDocLine {
   unitRateCents: Cents;
   amountCents: Cents;
   gstCents: Cents;
+  /** Which shift this line came from, so it can be persisted as a real foreign key. */
+  shiftId?: string;
 }
 
 export interface InvoiceDoc {
@@ -54,6 +56,7 @@ export interface PricedShift {
   /** Local calendar date the shift started, yyyy-MM-dd. */
   date: string;
   result: PricingResult;
+  shiftId?: string;
 }
 
 export interface BuildInvoiceOptions {
@@ -74,7 +77,7 @@ export function buildInvoice(options: BuildInvoiceOptions): InvoiceDoc {
   const lines: InvoiceDocLine[] = shifts
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date))
-    .flatMap((shift) => shift.result.lines.map((line) => toDocLine(shift.date, line)));
+    .flatMap((shift) => shift.result.lines.map((line) => toDocLine(shift.date, line, shift.shiftId)));
 
   const subtotalCents = lines.reduce((sum, l) => sum + l.amountCents, 0);
   const gstCents = lines.reduce((sum, l) => sum + l.gstCents, 0);
@@ -101,7 +104,7 @@ export function buildInvoice(options: BuildInvoiceOptions): InvoiceDoc {
   };
 }
 
-function toDocLine(date: string, line: PricedLine): InvoiceDocLine {
+function toDocLine(date: string, line: PricedLine, shiftId?: string): InvoiceDocLine {
   return {
     serviceDate: date,
     description: line.description,
@@ -111,6 +114,7 @@ function toDocLine(date: string, line: PricedLine): InvoiceDocLine {
     unitRateCents: line.unitRateCents,
     amountCents: line.amountCents,
     gstCents: line.gstCents,
+    shiftId,
   };
 }
 
