@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-surface-sunk text-ink antialiased;
+  }
+
+  /* Support workers use this one-handed on a phone. WCAG 2.2 asks for 24px minimum
+     targets; 44px is the comfortable size and costs nothing on desktop. */
+  button,
+  [role='button'],
+  input,
+  select {
+    min-height: 44px;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-surface-line bg-surface p-5 shadow-sm;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-ink-soft;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-surface-line bg-white px-3 py-2.5 text-base
+           text-ink placeholder:text-ink-faint focus:border-brand-500;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
+           text-sm font-semibold transition-colors;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700;
+  }
+
+  .btn-ghost {
+    @apply btn border border-surface-line bg-white text-ink hover:bg-surface-sunk;
+  }
+}
