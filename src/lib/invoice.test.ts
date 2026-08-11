@@ -41,6 +41,7 @@ function priced(gst: boolean): PricingResult {
     endUtc: '2025-07-16T04:00:00Z', // 2pm Sydney
     timezone: TZ,
     serviceTypeId: SERVICE,
+    workerGstRegistered: true,
   };
   return priceShift(shift, card(gst));
 }

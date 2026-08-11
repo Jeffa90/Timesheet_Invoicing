@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import type { ShiftInput, UtcInterval } from './pricing/types';
+import type { ShiftExpense, ShiftInput, UtcInterval } from './pricing/types';
 
 /**
  * Turns what a worker types on their phone into the engine's input.
@@ -26,6 +26,7 @@ export interface ShiftFormValues {
   sleepoverEnd: string;
   activeSupport: TimeRangeValue[];
   travelKm: number;
+  expenses: ShiftExpense[];
 }
 
 export const EMPTY_FORM: ShiftFormValues = {
@@ -40,6 +41,7 @@ export const EMPTY_FORM: ShiftFormValues = {
   sleepoverEnd: '06:00',
   activeSupport: [],
   travelKm: 0,
+  expenses: [],
 };
 
 /** Resolve `HH:mm` on the shift's date, rolling to the next day if it falls before `notBefore`. */
@@ -55,6 +57,7 @@ export function buildShiftInput(
   values: ShiftFormValues,
   timezone: string,
   serviceTypeId: string,
+  workerGstRegistered: boolean,
 ): ShiftInput {
   if (!values.date) throw new ShiftFormError('Choose the date the shift started.');
 
@@ -71,6 +74,7 @@ export function buildShiftInput(
     endUtc: end.toUTC().toISO()!,
     timezone,
     serviceTypeId,
+    workerGstRegistered,
   };
 
   if (values.hasUnpaidBreak && values.breakMinutes > 0) {
@@ -115,6 +119,9 @@ export function buildShiftInput(
   }
 
   if (values.travelKm > 0) shift.travelKm = values.travelKm;
+
+  const expenses = values.expenses.filter((e) => e.description.trim() && e.amountCents > 0);
+  if (expenses.length > 0) shift.expenses = expenses;
 
   return shift;
 }

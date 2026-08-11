@@ -46,11 +46,28 @@ export default async function LogShiftPage() {
   }
 
   const activeEngagement = engagements[0];
-  const [serviceTypes, allServiceTypes, holidays] = await Promise.all([
+  const [workerProfile, serviceTypes, allServiceTypes, holidays] = await Promise.all([
+    db.workerProfile.findUnique({ where: { userId: user.id } }),
     db.serviceType.findMany({ where: { orgId: activeEngagement.orgId, active: true }, orderBy: { name: 'asc' } }),
     db.serviceType.findMany({ where: { orgId: activeEngagement.orgId } }),
     db.publicHoliday.findMany({ where: { state: activeEngagement.org.state ?? undefined } }),
   ]);
+
+  if (!workerProfile) {
+    return (
+      <div className="mx-auto max-w-lg text-center">
+        <h1 className="text-2xl font-bold tracking-tight">Set up your profile first</h1>
+        <p className="mt-3 text-sm text-ink-soft">
+          We need your invoicing details — including whether you&apos;re registered for GST — before
+          any shift can be priced correctly.
+        </p>
+        <Link href="/profile" className="btn-primary mt-4 inline-flex">
+          Set up your profile
+        </Link>
+      </div>
+    );
+  }
+
   const serviceTypeGst = Object.fromEntries(allServiceTypes.map((s) => [s.id, s.gstApplicable]));
 
   return (
@@ -58,9 +75,10 @@ export default async function LogShiftPage() {
       engagements={engagements.map((e) => ({ orgId: e.orgId, orgName: e.org.name, timezone: e.org.timezone }))}
       activeOrgId={activeEngagement.orgId}
       timezone={activeEngagement.org.timezone}
-      serviceTypes={serviceTypes.map((s) => ({ id: s.id, name: s.name }))}
+      serviceTypes={serviceTypes.map((s) => ({ id: s.id, name: s.name, flatRate: s.flatRate }))}
       rateCard={toRateCardSnapshot(activeEngagement.rateCard, serviceTypeGst)}
       holidays={holidays.map((h) => ({ date: h.date.toISOString().slice(0, 10), name: h.name }))}
+      gstRegistered={workerProfile.gstRegistered}
     />
   );
 }

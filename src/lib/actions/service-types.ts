@@ -11,6 +11,7 @@ const serviceTypeSchema = z.object({
   name: z.string().trim().min(1),
   ndisLineItemCode: z.string().trim().optional(),
   gstApplicable: z.boolean(),
+  flatRate: z.boolean(),
 });
 
 const formSchema = z.object({ serviceTypes: z.array(serviceTypeSchema).min(1) });
@@ -48,7 +49,12 @@ export async function saveServiceTypesAction(
     if (st.id) {
       await db.serviceType.update({
         where: { id: st.id },
-        data: { name: st.name, ndisLineItemCode: st.ndisLineItemCode || null, gstApplicable: st.gstApplicable },
+        data: {
+          name: st.name,
+          ndisLineItemCode: st.ndisLineItemCode || null,
+          gstApplicable: st.gstApplicable,
+          flatRate: st.flatRate,
+        },
       });
       keepIds.push(st.id);
     } else {
@@ -58,6 +64,7 @@ export async function saveServiceTypesAction(
           name: st.name,
           ndisLineItemCode: st.ndisLineItemCode || null,
           gstApplicable: st.gstApplicable,
+          flatRate: st.flatRate,
           unit: 'HOUR',
         },
       });

@@ -30,7 +30,7 @@ export default async function RatesPage() {
       orgName={org.name}
       timezone={org.timezone}
       rateCard={toRateCardSnapshot(rateCard, serviceTypeGst)}
-      serviceTypes={serviceTypes.map((s) => ({ id: s.id, name: s.name }))}
+      serviceTypes={serviceTypes.map((s) => ({ id: s.id, name: s.name, flatRate: s.flatRate }))}
       holidays={holidays.map((h) => ({ date: h.date.toISOString().slice(0, 10), name: h.name }))}
     />
   );

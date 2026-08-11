@@ -15,6 +15,7 @@ export interface SaveShiftState {
 }
 
 const timeRangeSchema = z.object({ start: z.string(), end: z.string() });
+const expenseSchema = z.object({ description: z.string(), amountCents: z.number(), gstApplicable: z.boolean() });
 
 const formSchema = z.object({
   orgId: z.string().min(1, 'Choose which business this shift is for.'),
@@ -30,6 +31,7 @@ const formSchema = z.object({
   sleepoverEnd: z.string(),
   activeSupport: z.array(timeRangeSchema),
   travelKm: z.coerce.number().min(0),
+  expenses: z.array(expenseSchema),
 });
 
 /**
@@ -42,8 +44,10 @@ export async function saveShiftAction(_prev: SaveShiftState, formData: FormData)
   const user = await requireSessionUser();
 
   let activeSupport: unknown;
+  let expenses: unknown;
   try {
     activeSupport = JSON.parse(String(formData.get('activeSupport') ?? '[]'));
+    expenses = JSON.parse(String(formData.get('expenses') ?? '[]'));
   } catch {
     return { error: 'Something went wrong reading the form. Try again.' };
   }
@@ -62,6 +66,7 @@ export async function saveShiftAction(_prev: SaveShiftState, formData: FormData)
     sleepoverEnd: formData.get('sleepoverEnd') ?? '06:00',
     activeSupport,
     travelKm: formData.get('travelKm') ?? 0,
+    expenses,
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Check the form and try again.' };
@@ -77,6 +82,11 @@ export async function saveShiftAction(_prev: SaveShiftState, formData: FormData)
   });
   if (!engagement || !engagement.active) {
     return { error: "You don't have an active engagement with that business." };
+  }
+
+  const workerProfile = await db.workerProfile.findUnique({ where: { userId: user.id } });
+  if (!workerProfile) {
+    return { error: 'Set up your invoicing profile before logging a shift.' };
   }
 
   const serviceType = await db.serviceType.findFirst({
@@ -102,10 +112,11 @@ export async function saveShiftAction(_prev: SaveShiftState, formData: FormData)
     sleepoverEnd: data.sleepoverEnd,
     activeSupport: data.activeSupport,
     travelKm: data.travelKm,
+    expenses: data.expenses,
   };
 
   try {
-    const shiftInput = buildShiftInput(formValues, engagement.org.timezone, serviceType.id);
+    const shiftInput = buildShiftInput(formValues, engagement.org.timezone, serviceType.id, workerProfile.gstRegistered);
     const result = priceShift(shiftInput, snapshot, holidays.map((h) => ({ date: h.date.toISOString().slice(0, 10), name: h.name })));
 
     const shift = await db.shift.create({
@@ -119,6 +130,7 @@ export async function saveShiftAction(_prev: SaveShiftState, formData: FormData)
         breaks: shiftInput.breaks ? JSON.parse(JSON.stringify(shiftInput.breaks)) : undefined,
         sleepover: shiftInput.sleepover ? JSON.parse(JSON.stringify(shiftInput.sleepover)) : undefined,
         travelKm: shiftInput.travelKm,
+        expenses: shiftInput.expenses ? JSON.parse(JSON.stringify(shiftInput.expenses)) : undefined,
         status: 'SUBMITTED',
         rateCardId: engagement.rateCardId,
         rateCardVersion: engagement.rateCard.version,

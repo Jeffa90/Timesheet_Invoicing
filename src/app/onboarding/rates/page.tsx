@@ -31,15 +31,19 @@ export default async function RatesStepPage() {
   const rateLines: RateLineValue[] = serviceTypes.flatMap((service) =>
     DIMENSIONS.map((dim) => {
       const existing = existingLineFor(service.id, dim.dayType, dim.bandKey);
+      // A flat-rate service (e.g. admin hours) isn't an NDIS catalogue item — no
+      // published price cap, so it's always a flat $/h entered directly.
+      const capCents = service.flatRate ? null : dim.capCents;
       return {
         serviceTypeId: service.id,
         serviceTypeName: service.name,
         dayType: dim.dayType,
         bandKey: dim.bandKey,
-        method: existing?.method ?? (dim.capCents ? 'PERCENT_OF_CAP' : 'ABSOLUTE'),
-        amountCents: existing?.amountCents ?? (dim.capCents ? null : 0),
-        percentOfCap: existing?.percentOfCap ?? (dim.capCents ? 100 : null),
-        capCents: existing?.capCents ?? dim.capCents,
+        flatRate: service.flatRate,
+        method: existing?.method ?? (capCents ? 'PERCENT_OF_CAP' : 'ABSOLUTE'),
+        amountCents: existing?.amountCents ?? (capCents ? null : 0),
+        percentOfCap: existing?.percentOfCap ?? (capCents ? 100 : null),
+        capCents: existing?.capCents ?? capCents,
       };
     }),
   );

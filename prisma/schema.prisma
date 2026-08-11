@@ -178,6 +178,8 @@ model ServiceType {
   unit             Unit    @default(HOUR)
   /// Many NDIS supports are GST-free; this is the per-item half of the GST decision.
   gstApplicable    Boolean @default(false)
+  /// No day/night/weekend variation, e.g. admin hours — one rate covers every band.
+  flatRate         Boolean @default(false)
   active           Boolean @default(true)
 
   org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)

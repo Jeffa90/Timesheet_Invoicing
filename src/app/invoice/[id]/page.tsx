@@ -95,7 +95,7 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
                 </td>
                 <td className="py-2 pr-2 text-ink">{line.description}</td>
                 <td className="py-2 text-right tabular-nums text-ink-soft">
-                  {line.unit === 'NIGHT' ? '1' : formatHours(line.quantity)}
+                  {line.unit === 'NIGHT' || line.unit === 'EACH' ? '1' : formatHours(line.quantity)}
                 </td>
                 <td className="py-2 text-right tabular-nums text-ink-soft">{formatCents(line.unitRateCents)}</td>
                 <td className="py-2 text-right tabular-nums font-medium text-ink">{formatCents(line.amountCents)}</td>

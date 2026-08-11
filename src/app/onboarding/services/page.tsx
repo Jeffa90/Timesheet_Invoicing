@@ -30,8 +30,16 @@ export default async function ServicesStepPage() {
                 name: s.name,
                 ndisLineItemCode: s.ndisLineItemCode ?? '',
                 gstApplicable: s.gstApplicable,
+                flatRate: s.flatRate,
               }))
-            : [{ name: 'Assistance With Self-Care Activities - Standard', ndisLineItemCode: '01_011_0107_1_1', gstApplicable: false }]
+            : [
+                {
+                  name: 'Assistance With Self-Care Activities - Standard',
+                  ndisLineItemCode: '01_011_0107_1_1',
+                  gstApplicable: false,
+                  flatRate: false,
+                },
+              ]
         }
       />
     </div>

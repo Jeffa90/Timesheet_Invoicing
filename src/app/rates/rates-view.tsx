@@ -16,6 +16,7 @@ const DAY_LABEL: Record<DayType, string> = {
 interface ServiceTypeOption {
   id: string;
   name: string;
+  flatRate?: boolean;
 }
 
 export function RatesView({
@@ -64,30 +65,31 @@ export function RatesView({
               </tr>
             </thead>
             <tbody>
-              {(byService.get(service.id) ?? []).map((rate, index) => {
-                const cents =
-                  rate.method === 'PERCENT_OF_CAP'
-                    ? Math.round(((rate.capCents ?? 0) * (rate.percentOfCap ?? 0)) / 100)
-                    : rate.amountCents ?? 0;
-                const overCap = rate.capCents != null && cents > rate.capCents;
-                return (
-                  <tr key={index} className="border-b border-surface-line/60">
-                    <td className="py-2.5 text-ink">
-                      {DAY_LABEL[rate.dayType]}
-                      {rate.bandKey ? ` · ${rate.bandKey.toLowerCase()}` : ''}
-                    </td>
-                    <td className={`py-2.5 text-right tabular-nums font-medium ${overCap ? 'text-warn' : 'text-ink'}`}>
-                      {formatCents(cents)}/h
-                    </td>
-                    <td className="py-2.5 text-right tabular-nums text-ink-faint">
-                      {rate.capCents != null ? `${formatCents(rate.capCents)}/h` : '—'}
-                    </td>
-                    <td className="py-2.5 text-right tabular-nums text-ink-faint">
-                      {rate.method === 'PERCENT_OF_CAP' ? `${rate.percentOfCap}%` : overCap ? 'over cap' : '—'}
-                    </td>
-                  </tr>
-                );
-              })}
+              {(service.flatRate ? (byService.get(service.id) ?? []).slice(0, 1) : byService.get(service.id) ?? []).map(
+                (rate, index) => {
+                  const cents =
+                    rate.method === 'PERCENT_OF_CAP'
+                      ? Math.round(((rate.capCents ?? 0) * (rate.percentOfCap ?? 0)) / 100)
+                      : rate.amountCents ?? 0;
+                  const overCap = rate.capCents != null && cents > rate.capCents;
+                  return (
+                    <tr key={index} className="border-b border-surface-line/60">
+                      <td className="py-2.5 text-ink">
+                        {service.flatRate ? 'Every day, any time' : `${DAY_LABEL[rate.dayType]}${rate.bandKey ? ` · ${rate.bandKey.toLowerCase()}` : ''}`}
+                      </td>
+                      <td className={`py-2.5 text-right tabular-nums font-medium ${overCap ? 'text-warn' : 'text-ink'}`}>
+                        {formatCents(cents)}/h
+                      </td>
+                      <td className="py-2.5 text-right tabular-nums text-ink-faint">
+                        {rate.capCents != null ? `${formatCents(rate.capCents)}/h` : '—'}
+                      </td>
+                      <td className="py-2.5 text-right tabular-nums text-ink-faint">
+                        {rate.method === 'PERCENT_OF_CAP' ? `${rate.percentOfCap}%` : overCap ? 'over cap' : '—'}
+                      </td>
+                    </tr>
+                  );
+                },
+              )}
             </tbody>
           </table>
         </section>
@@ -148,6 +150,7 @@ function TestAShift({
         endUtc: e.toUTC().toISO()!,
         timezone,
         serviceTypeId,
+        workerGstRegistered: true,
         sleepover: overnight
           ? {
               windowStartUtc: s.set({ hour: 22, minute: 0 }).toUTC().toISO()!,

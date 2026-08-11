@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState, useEffect, useMemo, useState } from 'react';
+import { MoneyInput } from '@/components/money-input';
 import { saveShiftAction } from '@/lib/actions/shifts';
 import { priceShift } from '@/lib/pricing/engine';
 import { formatCents, formatHours } from '@/lib/pricing/money';
@@ -11,6 +12,8 @@ import { EMPTY_FORM, type ShiftFormValues, buildShiftInput, todayIn } from '@/li
 interface ServiceTypeOption {
   id: string;
   name: string;
+  /** No day/night/weekend variation, e.g. admin hours — the sleepover section is meaningless for these. */
+  flatRate?: boolean;
 }
 
 interface EngagementOption {
@@ -32,6 +35,7 @@ export function ShiftLogger({
   serviceTypes,
   rateCard,
   holidays,
+  gstRegistered,
 }: {
   engagements: EngagementOption[];
   activeOrgId: string;
@@ -39,24 +43,33 @@ export function ShiftLogger({
   serviceTypes: ServiceTypeOption[];
   rateCard: RateCardSnapshot;
   holidays: PublicHolidayDef[];
+  gstRegistered: boolean;
 }) {
   const [form, setForm] = useState<ShiftFormValues>(EMPTY_FORM);
   const [serviceTypeId, setServiceTypeId] = useState(serviceTypes[0]?.id ?? '');
   const [saveState, formAction, pending] = useActionState(saveShiftAction, {});
 
+  const selectedServiceType = serviceTypes.find((s) => s.id === serviceTypeId);
+
   useEffect(() => {
     setForm((f) => (f.date ? f : { ...f, date: todayIn(timezone) }));
   }, [timezone]);
 
+  // A flat-rate service type (e.g. admin hours) has no sleepover concept —
+  // force the toggle off so switching into one never carries a stale window.
+  useEffect(() => {
+    if (selectedServiceType?.flatRate) setForm((f) => (f.isOvernight ? { ...f, isOvernight: false } : f));
+  }, [selectedServiceType?.flatRate]);
+
   const { result, error } = useMemo(() => {
     if (!form.date || !serviceTypeId) return { result: null, error: null };
     try {
-      const shift = buildShiftInput(form, timezone, serviceTypeId);
+      const shift = buildShiftInput(form, timezone, serviceTypeId, gstRegistered);
       return { result: priceShift(shift, rateCard, holidays), error: null };
     } catch (e) {
       return { result: null, error: e instanceof Error ? e.message : 'Something went wrong.' };
     }
-  }, [form, serviceTypeId, timezone, rateCard, holidays]);
+  }, [form, serviceTypeId, timezone, gstRegistered, rateCard, holidays]);
 
   const set = <K extends keyof ShiftFormValues>(key: K, value: ShiftFormValues[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
@@ -150,106 +163,108 @@ export function ShiftLogger({
           </div>
         </section>
 
-        <section className="card space-y-4" aria-labelledby="overnight">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 id="overnight" className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
-                Overnight sleepover
-              </h2>
-              <p className="mt-1 text-sm text-ink-soft">
-                Hourly billing stops when the sleepover starts and picks up again when it ends.
-              </p>
-            </div>
-            <Toggle label="Overnight sleepover" checked={form.isOvernight} onChange={(v) => set('isOvernight', v)} />
-          </div>
-
-          {form.isOvernight && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label" htmlFor="sleepStart">
-                    Hourly billing stops
-                  </label>
-                  <input
-                    id="sleepStart"
-                    type="time"
-                    className="field"
-                    value={form.sleepoverStart}
-                    onChange={(e) => set('sleepoverStart', e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="label" htmlFor="sleepEnd">
-                    Hourly billing resumes
-                  </label>
-                  <input
-                    id="sleepEnd"
-                    type="time"
-                    className="field"
-                    value={form.sleepoverEnd}
-                    onChange={(e) => set('sleepoverEnd', e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <fieldset className="rounded-lg bg-surface-sunk p-3">
-                <legend className="px-1 text-sm font-medium text-ink-soft">Woken to provide support?</legend>
-                <p className="mb-3 px-1 text-xs text-ink-faint">
-                  The first {formatHours(rateCard.sleepover.includedActiveHours)} are already covered by the
-                  sleepover fee. Anything beyond that bills on top.
+        {!selectedServiceType?.flatRate && (
+          <section className="card space-y-4" aria-labelledby="overnight">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 id="overnight" className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+                  Overnight sleepover
+                </h2>
+                <p className="mt-1 text-sm text-ink-soft">
+                  Hourly billing stops when the sleepover starts and picks up again when it ends.
                 </p>
+              </div>
+              <Toggle label="Overnight sleepover" checked={form.isOvernight} onChange={(v) => set('isOvernight', v)} />
+            </div>
 
-                <div className="space-y-2">
-                  {form.activeSupport.map((period, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      <input
-                        type="time"
-                        aria-label={`Active support ${index + 1} start`}
-                        className="field"
-                        value={period.start}
-                        onChange={(e) => {
-                          const next = [...form.activeSupport];
-                          next[index] = { ...next[index], start: e.target.value };
-                          set('activeSupport', next);
-                        }}
-                      />
-                      <span aria-hidden className="text-ink-faint">
-                        –
-                      </span>
-                      <input
-                        type="time"
-                        aria-label={`Active support ${index + 1} end`}
-                        className="field"
-                        value={period.end}
-                        onChange={(e) => {
-                          const next = [...form.activeSupport];
-                          next[index] = { ...next[index], end: e.target.value };
-                          set('activeSupport', next);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        className="btn-ghost px-3"
-                        onClick={() => set('activeSupport', form.activeSupport.filter((_, i) => i !== index))}
-                      >
-                        <span className="sr-only">Remove period {index + 1}</span>
-                        <span aria-hidden>×</span>
-                      </button>
-                    </div>
-                  ))}
+            {form.isOvernight && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="label" htmlFor="sleepStart">
+                      Hourly billing stops
+                    </label>
+                    <input
+                      id="sleepStart"
+                      type="time"
+                      className="field"
+                      value={form.sleepoverStart}
+                      onChange={(e) => set('sleepoverStart', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="label" htmlFor="sleepEnd">
+                      Hourly billing resumes
+                    </label>
+                    <input
+                      id="sleepEnd"
+                      type="time"
+                      className="field"
+                      value={form.sleepoverEnd}
+                      onChange={(e) => set('sleepoverEnd', e.target.value)}
+                    />
+                  </div>
                 </div>
 
-                <button
-                  type="button"
-                  className="btn-ghost mt-2 w-full"
-                  onClick={() => set('activeSupport', [...form.activeSupport, { start: '01:00', end: '02:00' }])}
-                >
-                  + Add a period
-                </button>
-              </fieldset>
-            </>
-          )}
-        </section>
+                <fieldset className="rounded-lg bg-surface-sunk p-3">
+                  <legend className="px-1 text-sm font-medium text-ink-soft">Woken to provide support?</legend>
+                  <p className="mb-3 px-1 text-xs text-ink-faint">
+                    The first {formatHours(rateCard.sleepover.includedActiveHours)} are already covered by the
+                    sleepover fee. Anything beyond that bills on top.
+                  </p>
+
+                  <div className="space-y-2">
+                    {form.activeSupport.map((period, index) => (
+                      <div key={index} className="flex items-center gap-2">
+                        <input
+                          type="time"
+                          aria-label={`Active support ${index + 1} start`}
+                          className="field"
+                          value={period.start}
+                          onChange={(e) => {
+                            const next = [...form.activeSupport];
+                            next[index] = { ...next[index], start: e.target.value };
+                            set('activeSupport', next);
+                          }}
+                        />
+                        <span aria-hidden className="text-ink-faint">
+                          –
+                        </span>
+                        <input
+                          type="time"
+                          aria-label={`Active support ${index + 1} end`}
+                          className="field"
+                          value={period.end}
+                          onChange={(e) => {
+                            const next = [...form.activeSupport];
+                            next[index] = { ...next[index], end: e.target.value };
+                            set('activeSupport', next);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="btn-ghost px-3"
+                          onClick={() => set('activeSupport', form.activeSupport.filter((_, i) => i !== index))}
+                        >
+                          <span className="sr-only">Remove period {index + 1}</span>
+                          <span aria-hidden>×</span>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-ghost mt-2 w-full"
+                    onClick={() => set('activeSupport', [...form.activeSupport, { start: '01:00', end: '02:00' }])}
+                  >
+                    + Add a period
+                  </button>
+                </fieldset>
+              </>
+            )}
+          </section>
+        )}
 
         <section className="card space-y-4" aria-labelledby="extras">
           <h2 id="extras" className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
@@ -307,6 +322,72 @@ export function ShiftLogger({
             />
           </div>
         </section>
+
+        <section className="card space-y-3" aria-labelledby="expenses">
+          <h2 id="expenses" className="text-sm font-semibold uppercase tracking-wide text-ink-faint">
+            Other expenses
+          </h2>
+          <p className="text-sm text-ink-soft">
+            Anything else to bill for this shift — supplies, parking, activity costs.
+          </p>
+
+          <div className="space-y-2">
+            {form.expenses.map((expense, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  type="text"
+                  aria-label={`Expense ${index + 1} description`}
+                  placeholder="Description"
+                  className="field min-w-0 flex-1"
+                  value={expense.description}
+                  onChange={(e) => {
+                    const next = [...form.expenses];
+                    next[index] = { ...next[index], description: e.target.value };
+                    set('expenses', next);
+                  }}
+                />
+                <MoneyInput
+                  ariaLabel={`Expense ${index + 1} amount`}
+                  className="field w-24 shrink-0"
+                  cents={expense.amountCents || null}
+                  onChangeCents={(cents) => {
+                    const next = [...form.expenses];
+                    next[index] = { ...next[index], amountCents: cents ?? 0 };
+                    set('expenses', next);
+                  }}
+                />
+                <label className="flex shrink-0 items-center gap-1 text-xs text-ink-faint">
+                  <input
+                    type="checkbox"
+                    checked={expense.gstApplicable}
+                    onChange={(e) => {
+                      const next = [...form.expenses];
+                      next[index] = { ...next[index], gstApplicable: e.target.checked };
+                      set('expenses', next);
+                    }}
+                  />
+                  GST
+                </label>
+                <button
+                  type="button"
+                  className="btn-ghost px-3"
+                  onClick={() => set('expenses', form.expenses.filter((_, i) => i !== index))}
+                >
+                  <span className="sr-only">Remove expense {index + 1}</span>
+                  <span aria-hidden>×</span>
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="btn-ghost w-full"
+            onClick={() => set('expenses', [...form.expenses, { description: '', amountCents: 0, gstApplicable: false }])}
+          >
+            + Add an expense
+          </button>
+        </section>
       </div>
 
       <Breakdown
@@ -329,6 +410,7 @@ export function ShiftLogger({
           sleepoverEnd: form.sleepoverEnd,
           activeSupport: JSON.stringify(form.activeSupport),
           travelKm: String(form.travelKm),
+          expenses: JSON.stringify(form.expenses),
         }}
       />
     </div>
@@ -385,7 +467,7 @@ function Breakdown({
                 <div className="min-w-0">
                   <p className="truncate font-medium text-ink">{line.description}</p>
                   <p className="text-xs text-ink-faint">
-                    {line.unit === 'NIGHT'
+                    {line.unit === 'NIGHT' || line.unit === 'EACH'
                       ? 'Flat fee'
                       : line.unit === 'KM'
                         ? `${line.quantity}km × ${formatCents(line.unitRateCents)}/km`

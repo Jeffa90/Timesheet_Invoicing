@@ -3,7 +3,7 @@
 import { useActionState, useMemo, useState } from 'react';
 import { saveRateCardAction } from '@/lib/actions/rate-card';
 import { formatCents } from '@/lib/pricing/money';
-import { MoneyInput } from './money-input';
+import { MoneyInput } from '@/components/money-input';
 
 export type DayType = 'WEEKDAY' | 'SATURDAY' | 'SUNDAY' | 'PUBLIC_HOLIDAY';
 export type BandKey = 'DAY' | 'EVENING' | 'NIGHT';
@@ -13,6 +13,8 @@ export interface RateLineValue {
   serviceTypeName: string;
   dayType: DayType;
   bandKey: BandKey | null;
+  /** No day/night/weekend variation, e.g. admin hours — entered once, applied to every dimension. */
+  flatRate?: boolean;
   method: 'ABSOLUTE' | 'PERCENT_OF_CAP';
   amountCents: number | null;
   percentOfCap: number | null;
@@ -76,6 +78,14 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
   const updateLine = (index: number, patch: Partial<RateLineValue>) =>
     setLines((prev) => prev.map((l, i) => (i === index ? { ...l, ...patch } : l)));
 
+  // A flat-rate service has one $/h figure that applies to every day/band dimension —
+  // fan a single edit out to all of that service's underlying rows so the payload sent
+  // to saveRateCardAction keeps the same six-row-per-service shape the engine expects.
+  const updateFlatRate = (serviceTypeId: string, amountCents: number | null) =>
+    setLines((prev) =>
+      prev.map((l) => (l.serviceTypeId === serviceTypeId ? { ...l, method: 'ABSOLUTE', amountCents, percentOfCap: null } : l)),
+    );
+
   const payload = JSON.stringify({
     ...meta,
     rateLines: lines.map(({ serviceTypeName: _serviceTypeName, ...rest }) => rest),
@@ -102,6 +112,17 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
       {[...byService.entries()].map(([serviceTypeId, { name, rows }]) => (
         <section key={serviceTypeId} className="card space-y-3">
           <h2 className="font-semibold text-ink">{name}</h2>
+          {rows[0]?.line.flatRate ? (
+            <div className="grid grid-cols-[1fr_7rem] items-center gap-2">
+              <span className="text-sm text-ink-soft">$/h, every day and time</span>
+              <MoneyInput
+                ariaLabel={`Dollars per hour for ${name}`}
+                className="field !min-h-0 py-1.5 text-sm"
+                cents={rows[0].line.amountCents}
+                onChangeCents={(cents) => updateFlatRate(serviceTypeId, cents)}
+              />
+            </div>
+          ) : (
           <div className="space-y-2">
             {rows.map(({ line, index }) => (
               <div key={index} className="grid grid-cols-[1fr_auto_7rem] items-center gap-2 sm:grid-cols-[1fr_auto_7rem_6rem]">
@@ -145,6 +166,7 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
               </div>
             ))}
           </div>
+          )}
         </section>
       ))}
 

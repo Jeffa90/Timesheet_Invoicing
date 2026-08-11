@@ -59,6 +59,13 @@ export interface ShiftInput {
   /** IANA zone, e.g. "Australia/Sydney". All band logic is wall-clock in this zone. */
   timezone: string;
   serviceTypeId: string;
+  /**
+   * Only a GST-registered worker may legally charge GST, regardless of whether
+   * the business has marked a service type or line item as taxable. Snapshotted
+   * per shift (not read live off a profile) so a later change to registration
+   * status can never retroactively alter how a past shift was priced.
+   */
+  workerGstRegistered: boolean;
   breaks?: ShiftBreak[];
   sleepover?: SleepoverInput;
   travelKm?: number;

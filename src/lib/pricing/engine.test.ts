@@ -66,6 +66,7 @@ function shift(startLocal: string, endLocal: string, extra: Partial<ShiftInput> 
     endUtc: syd(endLocal),
     timezone: TZ,
     serviceTypeId: SERVICE,
+    workerGstRegistered: true,
     ...extra,
   };
 }
@@ -392,6 +393,17 @@ describe('travel, expenses and GST', () => {
     expect(result.subtotalCents).toBe(40000);
     expect(result.gstCents).toBe(4000);
     expect(result.totalCents).toBe(44000);
+  });
+
+  it('charges no GST for a worker who is not GST-registered, even on a taxable service type', () => {
+    const card = testCard({ serviceTypeGst: { [SERVICE]: true } });
+    const result = priceShift(
+      shift('2025-07-16T09:00', '2025-07-16T17:00', { workerGstRegistered: false }),
+      card,
+    );
+
+    expect(result.gstCents).toBe(0);
+    expect(result.totalCents).toBe(result.subtotalCents);
   });
 
   it('leaves GST-free supports untaxed', () => {

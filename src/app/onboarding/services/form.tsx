@@ -8,6 +8,7 @@ interface Row {
   name: string;
   ndisLineItemCode: string;
   gstApplicable: boolean;
+  flatRate: boolean;
 }
 
 export function ServicesForm({ initial }: { initial: Row[] }) {
@@ -64,6 +65,14 @@ export function ServicesForm({ initial }: { initial: Row[] }) {
                   </label>
                 </div>
               </div>
+              <label className="flex items-center gap-2 text-sm text-ink-soft">
+                <input
+                  type="checkbox"
+                  checked={row.flatRate}
+                  onChange={(e) => update(index, { flatRate: e.target.checked })}
+                />
+                Flat rate (e.g. admin hours — no day/night variation)
+              </label>
               {rows.length > 1 && (
                 <button
                   type="button"
@@ -81,7 +90,7 @@ export function ServicesForm({ initial }: { initial: Row[] }) {
       <button
         type="button"
         className="btn-ghost w-full"
-        onClick={() => setRows((r) => [...r, { name: '', ndisLineItemCode: '', gstApplicable: false }])}
+        onClick={() => setRows((r) => [...r, { name: '', ndisLineItemCode: '', gstApplicable: false, flatRate: false }])}
       >
         + Add another support
       </button>
