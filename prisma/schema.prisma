@@ -121,6 +121,8 @@ model WorkerProfile {
   /// Some subcontractors trade through a company as well as holding an ABN.
   acn           String?
   gstRegistered Boolean @default(false)
+  /// Drives the tax set-aside estimate on /profile — not used anywhere else.
+  hasHecsDebt   Boolean @default(false)
   phone         String?
 
   addressLine1 String?
@@ -508,6 +510,9 @@ model Invoice {
 
   @@unique([userId, number])
   @@index([orgId, status])
+  /// The tax set-aside estimator sums a worker's paid invoices across every
+  /// business they subcontract to, filtered by userId + paidAt.
+  @@index([userId, paidAt])
 }
 
 /// A real table rather than JSON so reporting can aggregate across invoices.

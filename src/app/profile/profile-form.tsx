@@ -8,6 +8,7 @@ interface Defaults {
   abn: string;
   acn: string;
   gstRegistered: boolean;
+  hasHecsDebt: boolean;
   phone: string;
   addressLine1: string;
   suburb: string;
@@ -48,6 +49,11 @@ export function ProfileForm({ states, defaults: d }: { states: readonly string[]
       <label className="flex items-center gap-2 text-sm text-ink-soft">
         <input type="checkbox" name="gstRegistered" defaultChecked={d.gstRegistered} />
         GST registered
+      </label>
+
+      <label className="flex items-center gap-2 text-sm text-ink-soft">
+        <input type="checkbox" name="hasHecsDebt" defaultChecked={d.hasHecsDebt} />
+        HECS/HELP debt
       </label>
 
       <div>

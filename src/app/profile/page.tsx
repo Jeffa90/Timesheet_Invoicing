@@ -2,9 +2,11 @@ import { db } from '@/lib/db';
 import { AU_STATES } from '@/lib/pricing/defaults';
 import { requireSessionUser } from '@/lib/session';
 import { ProfileForm } from './profile-form';
+import { TaxEstimateCard } from './tax-estimate-card';
 
-export default async function ProfilePage() {
+export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ fy?: string }> }) {
   const user = await requireSessionUser();
+  const { fy } = await searchParams;
   const profile = await db.workerProfile.findUnique({ where: { userId: user.id } });
 
   return (
@@ -24,6 +26,7 @@ export default async function ProfilePage() {
           abn: profile?.abn ?? '',
           acn: profile?.acn ?? '',
           gstRegistered: profile?.gstRegistered ?? false,
+          hasHecsDebt: profile?.hasHecsDebt ?? false,
           phone: profile?.phone ?? '',
           addressLine1: profile?.addressLine1 ?? '',
           suburb: profile?.suburb ?? '',
@@ -34,6 +37,16 @@ export default async function ProfilePage() {
           bankAccountName: profile?.bankAccountName ?? '',
         }}
       />
+
+      {profile && (
+        <TaxEstimateCard
+          userId={user.id}
+          gstRegistered={profile.gstRegistered}
+          hasHecsDebt={profile.hasHecsDebt}
+          state={profile.state}
+          viewingPrevious={fy === 'previous'}
+        />
+      )}
     </div>
   );
 }
