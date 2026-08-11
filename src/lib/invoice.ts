@@ -18,8 +18,10 @@ export interface InvoiceParty {
   name: string;
   businessName?: string;
   abn?: string;
+  acn?: string;
   addressLines?: string[];
   email?: string;
+  phone?: string;
 }
 
 export interface InvoiceDocLine {

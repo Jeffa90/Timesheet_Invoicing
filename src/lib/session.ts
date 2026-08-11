@@ -30,6 +30,20 @@ export async function getPrimaryAdminOrg(userId: string) {
   return membership?.org ?? null;
 }
 
+/**
+ * Whether `userId` is an active admin-rights member of `orgId` specifically —
+ * not just their "primary" org (see getPrimaryAdminOrg above, which is a UI
+ * shortcut for someone who runs one business, not a general authorization
+ * check). Use this wherever an action needs to verify access to a particular
+ * business, e.g. before letting someone mark one of its invoices paid.
+ */
+export async function isOrgAdmin(userId: string, orgId: string): Promise<boolean> {
+  const membership = await db.membership.findUnique({
+    where: { orgId_userId: { orgId, userId } },
+  });
+  return Boolean(membership && membership.status === 'ACTIVE' && ['OWNER', 'ADMIN', 'COORDINATOR'].includes(membership.role));
+}
+
 /** Every business a signed-in worker currently has an active engagement with. */
 export async function getWorkerEngagements(userId: string) {
   return db.engagement.findMany({

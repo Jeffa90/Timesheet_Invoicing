@@ -118,7 +118,10 @@ model WorkerProfile {
   userId        String  @unique
   businessName  String?
   abn           String?
+  /// Some subcontractors trade through a company as well as holding an ABN.
+  acn           String?
   gstRegistered Boolean @default(false)
+  phone         String?
 
   addressLine1 String?
   suburb       String?

@@ -3,7 +3,6 @@ import { db } from '@/lib/db';
 import { formatCents } from '@/lib/pricing/money';
 import { getWorkerEngagements, requireSessionUser } from '@/lib/session';
 import { GenerateForm } from './generate-form';
-import { ProfileForm } from './profile-form';
 
 export default async function InvoicePage() {
   const user = await requireSessionUser();
@@ -40,7 +39,13 @@ export default async function InvoicePage() {
       </div>
 
       {!workerProfile ? (
-        <ProfileForm />
+        <p className="card text-sm text-ink-soft">
+          Add your invoice details first —{' '}
+          <Link href="/profile" className="font-medium text-brand-600">
+            set up your profile
+          </Link>
+          .
+        </p>
       ) : pendingShifts.length > 0 ? (
         <GenerateForm orgId={activeOrgId} orgName={activeOrgName} shiftCount={pendingShifts.length} totalCents={totalCents} />
       ) : (

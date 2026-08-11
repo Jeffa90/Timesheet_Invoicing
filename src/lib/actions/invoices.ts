@@ -49,12 +49,21 @@ export async function generateInvoiceAction(
   const number = nextInvoiceNumber(workerProfile.invoicePrefix, workerProfile.nextInvoiceNumber);
   const issueDate = DateTime.now().setZone(org.timezone).toFormat('yyyy-MM-dd');
 
+  const addressLines = [
+    workerProfile.addressLine1,
+    [workerProfile.suburb, workerProfile.state, workerProfile.postcode].filter(Boolean).join(' '),
+  ].filter((line): line is string => Boolean(line));
+
   const doc = buildInvoice({
     shifts: shiftsForInvoice,
     from: {
       name: user.name ?? workerProfile.businessName ?? 'Subcontractor',
       businessName: workerProfile.businessName ?? undefined,
       abn: workerProfile.abn ?? undefined,
+      acn: workerProfile.acn ?? undefined,
+      addressLines: addressLines.length > 0 ? addressLines : undefined,
+      email: user.email ?? undefined,
+      phone: workerProfile.phone ?? undefined,
     },
     to: { name: org.name, abn: org.abn ?? undefined },
     number,

@@ -2,7 +2,9 @@ import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';
 import { formatInvoiceDate, type InvoiceParty } from '@/lib/invoice';
 import { formatCents, formatHours } from '@/lib/pricing/money';
-import { requireSessionUser } from '@/lib/session';
+import { isOrgAdmin, requireSessionUser } from '@/lib/session';
+import { MarkPaidForm } from './mark-paid-form';
+import { MarkUnpaidButton } from './mark-unpaid-button';
 import { SendButton } from './send-button';
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -14,23 +16,28 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
     include: { lines: { orderBy: { sortOrder: 'asc' } }, org: true },
   });
 
-  if (!invoice || invoice.userId !== user.id) notFound();
+  const isOwner = invoice?.userId === user.id;
+  const isBusinessViewer = invoice ? !isOwner && (await isOrgAdmin(user.id, invoice.orgId)) : false;
+  if (!invoice || (!isOwner && !isBusinessViewer)) notFound();
 
   const from = invoice.fromSnapshot as unknown as InvoiceParty;
   const to = invoice.toSnapshot as unknown as InvoiceParty;
   const timezone = invoice.org.timezone;
 
+  const statusLine =
+    invoice.status === 'DRAFT'
+      ? "Not sent yet — check the details below, then send it."
+      : invoice.status === 'PAID'
+        ? `Paid${invoice.paidAt ? ` ${formatInvoiceDate(invoice.paidAt.toISOString().slice(0, 10), timezone)}` : ''}${invoice.paymentReference ? ` · ${invoice.paymentReference}` : ''}`
+        : invoice.status === 'SENT'
+          ? `Sent${invoice.sentAt ? ` ${formatInvoiceDate(invoice.sentAt.toISOString().slice(0, 10), timezone)}` : ''} — pending payment`
+          : invoice.status;
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">{invoice.number}</h1>
-        <p className="mt-1 text-sm text-ink-soft">
-          {invoice.status === 'DRAFT'
-            ? "Not sent yet — check the details below, then send it."
-            : `${invoice.status === 'SENT' ? 'Sent' : invoice.status === 'PAID' ? 'Paid' : invoice.status} ${
-                invoice.sentAt ? formatInvoiceDate(invoice.sentAt.toISOString().slice(0, 10), timezone) : ''
-              }`}
-        </p>
+        <p className="mt-1 text-sm text-ink-soft">{statusLine}</p>
       </div>
 
       <div className="card mx-auto max-w-2xl bg-white p-8 text-sm">
@@ -50,7 +57,15 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">From</p>
             <p className="mt-1 font-semibold text-ink">{from.businessName ?? from.name}</p>
             <p className="text-ink-soft">{from.name}</p>
+            {from.addressLines?.map((line) => (
+              <p key={line} className="text-ink-soft">
+                {line}
+              </p>
+            ))}
             {from.abn && <p className="text-ink-soft">ABN {from.abn}</p>}
+            {from.acn && <p className="text-ink-soft">ACN {from.acn}</p>}
+            {from.phone && <p className="text-ink-soft">{from.phone}</p>}
+            {from.email && <p className="text-ink-soft">{from.email}</p>}
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">To</p>
@@ -110,7 +125,9 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="mx-auto flex max-w-2xl justify-end gap-2">
-        {invoice.status === 'DRAFT' && <SendButton invoiceId={invoice.id} />}
+        {isOwner && invoice.status === 'DRAFT' && <SendButton invoiceId={invoice.id} />}
+        {isBusinessViewer && invoice.status === 'SENT' && <MarkPaidForm invoiceId={invoice.id} />}
+        {isBusinessViewer && invoice.status === 'PAID' && <MarkUnpaidButton invoiceId={invoice.id} />}
       </div>
       <p className="mx-auto max-w-2xl text-right text-xs text-ink-faint">
         PDF export and email delivery aren&apos;t wired up yet — see the README.
