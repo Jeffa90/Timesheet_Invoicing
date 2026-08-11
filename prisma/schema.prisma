@@ -1,0 +1,553 @@
+// NDIS shift tracking and invoicing.
+//
+// Two conventions run through this schema:
+//   * Money is ALWAYS an Int of cents. Never Float, never Decimal-as-string.
+//   * Anything that prices a shift is versioned and snapshotted, so editing a rate
+//     card can never retroactively change an invoice that has already been issued.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------- identity
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  phone        String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships     Membership[]
+  workerProfile   WorkerProfile?
+  engagements     Engagement[]
+  shifts          Shift[]
+  timesheets      Timesheet[]
+  invoices        Invoice[]
+  approvals       Timesheet[]      @relation("TimesheetApprover")
+  auditEntries    AuditLog[]
+  onboardingState OnboardingState[]
+}
+
+model Organisation {
+  id            String  @id @default(cuid())
+  name          String
+  legalName     String?
+  abn           String?
+  gstRegistered Boolean @default(false)
+
+  addressLine1 String?
+  addressLine2 String?
+  suburb       String?
+  state        String? // NSW, VIC, ... — drives the public holiday calendar
+  postcode     String?
+
+  email    String?
+  phone    String?
+  logoUrl  String?
+  /// IANA zone, e.g. "Australia/Sydney". All shift band logic is wall-clock in this zone.
+  timezone String  @default("Australia/Sydney")
+
+  invoiceTermsDays Int     @default(14)
+  invoiceNotes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships     Membership[]
+  participants    Participant[]
+  serviceTypes    ServiceType[]
+  rateCards       RateCard[]
+  engagements     Engagement[]
+  shifts          Shift[]
+  timesheets      Timesheet[]
+  invoices        Invoice[]
+  auditEntries    AuditLog[]
+  onboardingState OnboardingState[]
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  COORDINATOR
+  WORKER
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+/// Tenancy lives here, not on User, so a subcontractor can work for several businesses.
+model Membership {
+  id     String           @id @default(cuid())
+  orgId  String
+  userId String
+  role   Role
+  status MembershipStatus @default(INVITED)
+
+  invitedAt   DateTime  @default(now())
+  acceptedAt  DateTime?
+  inviteToken String?   @unique
+
+  org  Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([userId])
+}
+
+/// The worker's own business details — global to the person, not per-organisation,
+/// because their ABN and GST registration follow them wherever they subcontract.
+model WorkerProfile {
+  id            String  @id @default(cuid())
+  userId        String  @unique
+  businessName  String?
+  abn           String?
+  gstRegistered Boolean @default(false)
+
+  addressLine1 String?
+  suburb       String?
+  state        String?
+  postcode     String?
+
+  bankBsb           String?
+  bankAccountNumber String?
+  bankAccountName   String?
+
+  invoicePrefix     String @default("INV")
+  nextInvoiceNumber Int    @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Assigns a worker to a rate card at a business. Two workers at the same business
+/// can sit on different rates, and rates can change over time without losing history.
+model Engagement {
+  id         String    @id @default(cuid())
+  orgId      String
+  userId     String
+  rateCardId String
+  startDate  DateTime
+  endDate    DateTime?
+  active     Boolean   @default(true)
+
+  org      Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rateCard RateCard     @relation(fields: [rateCardId], references: [id])
+
+  @@index([orgId, userId])
+}
+
+// ------------------------------------------------------- pricing configuration
+
+enum Unit {
+  HOUR
+  EACH
+  KM
+  NIGHT
+}
+
+model ServiceType {
+  id               String  @id @default(cuid())
+  orgId            String
+  name             String
+  ndisLineItemCode String?
+  unit             Unit    @default(HOUR)
+  /// Many NDIS supports are GST-free; this is the per-item half of the GST decision.
+  gstApplicable    Boolean @default(false)
+  active           Boolean @default(true)
+
+  org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  rateLines RateLine[]
+  shifts    Shift[]
+
+  @@index([orgId])
+}
+
+enum RateCardStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ClassificationStrategy {
+  SEGMENTED
+  SHIFT_START
+  MAJORITY
+}
+
+enum RoundingMode {
+  NEAREST
+  UP
+  DOWN
+}
+
+model RateCard {
+  id            String         @id @default(cuid())
+  orgId         String
+  name          String
+  version       Int            @default(1)
+  status        RateCardStatus @default(DRAFT)
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  classificationStrategy ClassificationStrategy @default(SEGMENTED)
+  roundingIncrementMin   Int                    @default(1)
+  roundingMode           RoundingMode           @default(NEAREST)
+  minimumEngagementMin   Int                    @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org         Organisation     @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  bands       TimeBand[]
+  rates       RateLine[]
+  sleepover   SleepoverConfig?
+  travel      TravelConfig?
+  engagements Engagement[]
+  shifts      Shift[]
+
+  @@index([orgId, status])
+}
+
+enum BandKey {
+  DAY
+  EVENING
+  NIGHT
+}
+
+/// Bands must tile the full 24 hours without gaps — the segmentation code depends on it.
+model TimeBand {
+  id                String  @id @default(cuid())
+  rateCardId        String
+  key               BandKey
+  startMinuteOfDay  Int
+  endMinuteOfDay    Int
+
+  rateCard RateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+
+  @@unique([rateCardId, key])
+}
+
+enum DayType {
+  WEEKDAY
+  SATURDAY
+  SUNDAY
+  PUBLIC_HOLIDAY
+}
+
+enum RateMethod {
+  ABSOLUTE
+  PERCENT_OF_CAP
+}
+
+model RateLine {
+  id            String     @id @default(cuid())
+  rateCardId    String
+  serviceTypeId String
+  dayType       DayType
+  /// null means the rate covers the whole day, as Saturday/Sunday/public holiday usually do.
+  bandKey       BandKey?
+  method        RateMethod @default(ABSOLUTE)
+  amountCents   Int?
+  percentOfCap  Float?
+  /// Published NDIS price limit, used for PERCENT_OF_CAP maths and the cap warning.
+  capCents      Int?
+
+  rateCard    RateCard    @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+  serviceType ServiceType @relation(fields: [serviceTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([rateCardId, serviceTypeId, dayType, bandKey])
+}
+
+model SleepoverConfig {
+  id         String  @id @default(cuid())
+  rateCardId String  @unique
+  enabled    Boolean @default(true)
+
+  /// The NDIS night-time sleepover is a continuous 8-hour span.
+  spanHours Int @default(8)
+  /// Defaults offered when a worker ticks "overnight", as minutes from local midnight.
+  defaultWindowStartMin Int @default(1320) // 22:00
+  defaultWindowEndMin   Int @default(360)  // 06:00
+
+  feeMethod        RateMethod @default(ABSOLUTE)
+  feeCents         Int?
+  feePercentOfCap  Float?
+  feeCapCents      Int?
+
+  /// Active support included in the flat fee before extra billing starts. NDIS default: 2.
+  includedActiveHours Float    @default(2)
+  /// Day type used to price the excess. 'PREVAILING' uses the actual clock instead.
+  excessActiveDayType String   @default("SATURDAY")
+  gstApplicable       Boolean  @default(false)
+  ndisLineItemCode    String?
+
+  rateCard RateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+}
+
+model TravelConfig {
+  id                       String  @id @default(cuid())
+  rateCardId               String  @unique
+  perKmCents               Int     @default(0)
+  maxKmPerShift            Int?
+  travelTimeMode           String  @default("NONE") // NONE | PREVAILING | FLAT
+  travelTimeFlatCentsPerHr Int?
+  gstApplicable            Boolean @default(false)
+
+  rateCard RateCard @relation(fields: [rateCardId], references: [id], onDelete: Cascade)
+}
+
+/// Reference copy of the published NDIS price limits, imported from the official
+/// Support Catalogue spreadsheet. Re-importing each 1 July updates every
+/// PERCENT_OF_CAP rate at once.
+model NdisPriceLimit {
+  id            String    @id @default(cuid())
+  lineItemCode  String
+  name          String
+  dayType       DayType?
+  bandKey       BandKey?
+  capCents      Int
+  region        String    @default("NATIONAL")
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+
+  @@unique([lineItemCode, region, effectiveFrom])
+  @@index([effectiveFrom, effectiveTo])
+}
+
+model PublicHoliday {
+  id    String   @id @default(cuid())
+  date  DateTime @db.Date
+  name  String
+  state String
+
+  @@unique([date, state])
+  @@index([state, date])
+}
+
+// -------------------------------------------------------------- work records
+
+model Participant {
+  id         String  @id @default(cuid())
+  orgId      String
+  firstName  String
+  lastName   String
+  ndisNumber String?
+  notes      String?
+  active     Boolean @default(true)
+
+  org    Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  shifts Shift[]
+
+  @@index([orgId])
+}
+
+enum ShiftStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  INVOICED
+}
+
+model Shift {
+  id            String  @id @default(cuid())
+  orgId         String
+  userId        String
+  participantId String?
+  serviceTypeId String
+  timesheetId   String?
+
+  startUtc DateTime
+  endUtc   DateTime
+  /// Snapshotted from the org so a later timezone change cannot re-price history.
+  timezone String
+
+  /// [{ startUtc, endUtc, paid }]
+  breaks Json?
+  /// { windowStartUtc, windowEndUtc, activeSupport: [{ startUtc, endUtc }] }
+  sleepover Json?
+
+  travelKm      Float?
+  travelMinutes Int?
+  /// [{ description, amountCents, gstApplicable }]
+  expenses Json?
+
+  notes  String?
+  status ShiftStatus @default(DRAFT)
+
+  /// Which rate card priced this shift, and the full result it produced. Frozen once
+  /// the shift leaves DRAFT so an invoice can always be reproduced exactly.
+  rateCardId        String?
+  rateCardVersion   Int?
+  pricingResult     Json?
+  subtotalCents     Int   @default(0)
+  gstCents          Int   @default(0)
+  totalCents        Int   @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org         Organisation  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [userId], references: [id])
+  participant Participant?  @relation(fields: [participantId], references: [id])
+  serviceType ServiceType   @relation(fields: [serviceTypeId], references: [id])
+  rateCard    RateCard?     @relation(fields: [rateCardId], references: [id])
+  timesheet   Timesheet?    @relation(fields: [timesheetId], references: [id])
+  invoiceLines InvoiceLine[]
+
+  @@index([orgId, userId, startUtc])
+  @@index([status])
+}
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  INVOICED
+}
+
+model Timesheet {
+  id          String          @id @default(cuid())
+  orgId       String
+  userId      String
+  periodStart DateTime
+  periodEnd   DateTime
+  status      TimesheetStatus @default(DRAFT)
+
+  submittedAt     DateTime?
+  approvedAt      DateTime?
+  approvedById    String?
+  rejectionReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org        Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user       User         @relation(fields: [userId], references: [id])
+  approvedBy User?        @relation("TimesheetApprover", fields: [approvedById], references: [id])
+  shifts     Shift[]
+  invoice    Invoice?
+
+  @@unique([orgId, userId, periodStart])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  VOID
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  orgId       String
+  userId      String
+  timesheetId String?       @unique
+  number      String
+  status      InvoiceStatus @default(DRAFT)
+
+  issueDate   DateTime
+  dueDate     DateTime
+  periodStart DateTime
+  periodEnd   DateTime
+
+  /// Both parties' details frozen at issue. An invoice must keep saying what it said
+  /// on the day it was sent, even if someone later edits their address or ABN.
+  fromSnapshot Json
+  toSnapshot   Json
+
+  subtotalCents Int
+  gstCents      Int
+  totalCents    Int
+  /// True when GST applies, which decides between "Tax Invoice" and "Invoice" headings.
+  isTaxInvoice  Boolean @default(false)
+
+  notes  String?
+  pdfUrl String?
+
+  sentAt           DateTime?
+  sentTo           Json?
+  paidAt           DateTime?
+  paymentReference String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org       Organisation  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id])
+  timesheet Timesheet?    @relation(fields: [timesheetId], references: [id])
+  lines     InvoiceLine[]
+
+  @@unique([userId, number])
+  @@index([orgId, status])
+}
+
+/// A real table rather than JSON so reporting can aggregate across invoices.
+model InvoiceLine {
+  id        String  @id @default(cuid())
+  invoiceId String
+  shiftId   String?
+  sortOrder Int     @default(0)
+
+  serviceDate      DateTime?
+  description      String
+  ndisLineItemCode String?
+  quantity         Float
+  unit             Unit      @default(HOUR)
+  unitRateCents    Int
+  amountCents      Int
+  gstCents         Int       @default(0)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  shift   Shift?  @relation(fields: [shiftId], references: [id])
+
+  @@index([invoiceId])
+}
+
+// -------------------------------------------------------------------- support
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  orgId       String
+  actorUserId String?
+  entity      String
+  entityId    String
+  action      String
+  before      Json?
+  after       Json?
+  at          DateTime @default(now())
+
+  org   Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  actor User?        @relation(fields: [actorUserId], references: [id])
+
+  @@index([orgId, entity, entityId])
+}
+
+model OnboardingState {
+  id             String    @id @default(cuid())
+  userId         String
+  orgId          String
+  completedSteps String[]  @default([])
+  tourCompletedAt DateTime?
+  dismissedTips  String[]  @default([])
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+}
