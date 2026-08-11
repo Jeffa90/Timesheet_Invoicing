@@ -9,9 +9,14 @@ export default function SignUpPage() {
 
   return (
     <div className="mx-auto max-w-sm">
-      <h1 className="text-2xl font-bold tracking-tight">Create your account</h1>
+      <h1 className="text-2xl font-bold tracking-tight">Set up your business</h1>
       <p className="mt-1 text-sm text-ink-soft">
-        For setting up a business, or accepting an invite from one.
+        Create an account to configure your rates and invite subcontractors.
+      </p>
+
+      <p className="mt-3 rounded-lg bg-surface-sunk px-3 py-2 text-sm text-ink-soft">
+        Subcontractor? You don&apos;t need to sign up here — ask the business you work for
+        to send you an invite link, which sets up your account directly.
       </p>
 
       <form action={formAction} className="card mt-6 space-y-4">
