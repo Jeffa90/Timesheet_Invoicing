@@ -3,6 +3,7 @@
 import { useActionState, useMemo, useState } from 'react';
 import { saveRateCardAction } from '@/lib/actions/rate-card';
 import { formatCents } from '@/lib/pricing/money';
+import { MoneyInput } from './money-input';
 
 export type DayType = 'WEEKDAY' | 'SATURDAY' | 'SUNDAY' | 'PUBLIC_HOLIDAY';
 export type BandKey = 'DAY' | 'EVENING' | 'NIGHT';
@@ -56,14 +57,6 @@ const DIM_LABEL: Record<string, string> = {
   'SUNDAY:null': 'Sunday (all day)',
   'PUBLIC_HOLIDAY:null': 'Public holiday (all day)',
 };
-
-function dollars(cents: number | null): string {
-  return cents == null ? '' : (cents / 100).toFixed(2);
-}
-function toCents(value: string): number | null {
-  const n = Number(value);
-  return value.trim() === '' || Number.isNaN(n) ? null : Math.round(n * 100);
-}
 
 export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue[]; defaults: Defaults }) {
   const [lines, setLines] = useState(rateLines);
@@ -127,14 +120,11 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
                 </select>
 
                 {line.method === 'ABSOLUTE' ? (
-                  <input
-                    aria-label="Dollars per hour"
-                    type="number"
-                    step="0.01"
-                    min={0}
+                  <MoneyInput
+                    ariaLabel="Dollars per hour"
                     className="field !min-h-0 py-1.5 text-sm"
-                    value={dollars(line.amountCents)}
-                    onChange={(e) => updateLine(index, { amountCents: toCents(e.target.value) })}
+                    cents={line.amountCents}
+                    onChangeCents={(cents) => updateLine(index, { amountCents: cents })}
                   />
                 ) : (
                   <input
@@ -195,14 +185,11 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
                   {meta.sleepover.feeMethod === 'ABSOLUTE' ? 'Amount ($)' : 'Percent of cap'}
                 </label>
                 {meta.sleepover.feeMethod === 'ABSOLUTE' ? (
-                  <input
+                  <MoneyInput
                     id="sleepFeeAmount"
-                    type="number"
-                    step="0.01"
-                    min={0}
                     className="field"
-                    value={dollars(meta.sleepover.feeCents)}
-                    onChange={(e) => setMeta((m) => ({ ...m, sleepover: { ...m.sleepover, feeCents: toCents(e.target.value) } }))}
+                    cents={meta.sleepover.feeCents}
+                    onChangeCents={(cents) => setMeta((m) => ({ ...m, sleepover: { ...m.sleepover, feeCents: cents } }))}
                   />
                 ) : (
                   <input
@@ -281,14 +268,11 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
             <label className="label" htmlFor="perKm">
               Per kilometre ($)
             </label>
-            <input
+            <MoneyInput
               id="perKm"
-              type="number"
-              step="0.01"
-              min={0}
               className="field"
-              value={dollars(meta.travel.perKmCents)}
-              onChange={(e) => setMeta((m) => ({ ...m, travel: { ...m.travel, perKmCents: toCents(e.target.value) ?? 0 } }))}
+              cents={meta.travel.perKmCents}
+              onChangeCents={(cents) => setMeta((m) => ({ ...m, travel: { ...m.travel, perKmCents: cents ?? 0 } }))}
             />
           </div>
           <div>
