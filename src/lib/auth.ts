@@ -1,22 +1,17 @@
 import bcrypt from 'bcryptjs';
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
+import { authConfig } from './auth.config';
 import { db } from './db';
 
 /**
- * Email + password auth. JWT session strategy, not database sessions — a
- * Credentials provider can't use next-auth's database session/adapter flow, and a
- * JWT is enough for what this app needs. Magic-link sign-in is the more inviting
- * option for non-technical workers and is a natural fast-follow once transactional
- * email (Resend) is wired up; password auth is what works without that dependency.
+ * Full Auth.js instance — Node runtime only (the API route handler, server
+ * actions). Adds the Credentials provider on top of the edge-safe base config;
+ * see auth.config.ts for why that split exists. Never import this file from
+ * middleware.ts.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  session: { strategy: 'jwt' },
-  pages: { signIn: '/login' },
-  // Off Vercel, Auth.js rejects requests whose Host header it doesn't recognise
-  // unless told to trust it. Safe here: this app always sits behind a single
-  // known origin (AUTH_URL), never proxies arbitrary hosts.
-  trustHost: true,
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {
@@ -38,16 +33,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) token.userId = user.id;
-      return token;
-    },
-    async session({ session, token }) {
-      if (session.user && typeof token.userId === 'string') {
-        session.user.id = token.userId;
-      }
-      return session;
-    },
-  },
 });
