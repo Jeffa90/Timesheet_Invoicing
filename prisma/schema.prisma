@@ -10,8 +10,14 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled (pgbouncer) connection — what the app uses at runtime. Serverless
+  // functions open many short-lived connections; without pooling, Postgres'
+  // connection limit gets exhausted fast under real traffic.
+  url       = env("DATABASE_URL")
+  // Direct connection — migrations need this. Pgbouncer's transaction mode
+  // doesn't support the session-level features `prisma migrate` relies on.
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------- identity
