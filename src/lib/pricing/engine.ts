@@ -7,6 +7,7 @@ import {
   dayTypeFor,
   formatLocal,
   formatLocalTime,
+  formatRange,
   holidaySet,
   intersectIntervals,
   mergeIntervals,
@@ -122,7 +123,7 @@ export function priceShift(
 
     lines.push({
       kind: 'HOURLY',
-      description: `${describeDayType(segment.dayType)} ${describeBand(segment.bandKey)} — ${formatLocalTime(segment.start)} to ${formatLocalTime(segment.end)}`,
+      description: `${describeDayType(segment.dayType)} ${describeBand(segment.bandKey)} — ${formatRange(segment.start, segment.end)}`,
       startLocal: segment.start.toISO() ?? undefined,
       endLocal: segment.end.toISO() ?? undefined,
       dayType: segment.dayType,
@@ -149,7 +150,7 @@ export function priceShift(
     const gstApplicable = shift.workerGstRegistered && card.sleepover.gstApplicable;
     lines.push({
       kind: 'SLEEPOVER',
-      description: `Night-time sleepover — ${formatLocalTime(sleepoverWindow.start)} to ${formatLocalTime(sleepoverWindow.end)}`,
+      description: `Night-time sleepover — ${formatRange(sleepoverWindow.start, sleepoverWindow.end)}`,
       startLocal: sleepoverWindow.start.toISO() ?? undefined,
       endLocal: sleepoverWindow.end.toISO() ?? undefined,
       quantity: 1,
@@ -383,7 +384,7 @@ function priceActiveSupport(
 
       lines.push({
         kind: 'ACTIVE_SUPPORT',
-        description: `Active support during sleepover — ${formatLocalTime(segment.start)} to ${formatLocalTime(segment.end)}`,
+        description: `Active support during sleepover — ${formatRange(segment.start, segment.end)}`,
         startLocal: segment.start.toISO() ?? undefined,
         endLocal: segment.end.toISO() ?? undefined,
         dayType: effectiveDayType,

@@ -150,6 +150,34 @@ describe('band splitting', () => {
   });
 });
 
+describe('line descriptions', () => {
+  it('does not append a trailing date to a segment that ends exactly at midnight', () => {
+    // Friday 10pm to Saturday 2am — the first segment ends exactly at midnight,
+    // which is the ordinary case for almost any multi-band or multi-day-type
+    // shift, not just genuine overnight spans. It must read as an unremarkable
+    // same-night boundary, not "to 12:00am 19 Jul".
+    const result = priceShift(shift('2025-07-18T22:00', '2025-07-19T02:00'), testCard());
+
+    expect(result.lines[0].description).toBe('Weekday evening — 10:00pm to 12:00am');
+    expect(result.lines[1].description).toBe('Saturday night — 12:00am to 2:00am');
+  });
+
+  it('appends the end date to a sleepover line that genuinely spans two calendar days', () => {
+    const result = priceShift(
+      shift('2025-07-18T20:00', '2025-07-19T08:00', {
+        sleepover: {
+          windowStartUtc: syd('2025-07-18T22:00'),
+          windowEndUtc: syd('2025-07-19T06:00'),
+        },
+      }),
+      testCard(),
+    );
+
+    const sleepover = result.lines.find((l) => l.kind === 'SLEEPOVER');
+    expect(sleepover?.description).toBe('Night-time sleepover — 10:00pm to 6:00am 19 Jul');
+  });
+});
+
 describe('overnight sleepover', () => {
   it("prices the user's worked example: 8pm Friday to 8am Saturday", () => {
     // Hourly until 10pm, flat sleepover 10pm-6am, hourly again from 6am at the
