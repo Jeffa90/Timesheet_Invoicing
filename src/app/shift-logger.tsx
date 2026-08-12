@@ -47,7 +47,15 @@ export function ShiftLogger({
 }) {
   const [form, setForm] = useState<ShiftFormValues>(EMPTY_FORM);
   const [serviceTypeId, setServiceTypeId] = useState(serviceTypes[0]?.id ?? '');
-  const [saveState, formAction, pending] = useActionState(saveShiftAction, {});
+  // Remounts the save form after a successful save — useActionState's state only
+  // ever changes via another submission, so without this the success message
+  // (and the now-hidden submit button) would be stuck forever.
+  const [formKey, setFormKey] = useState(0);
+
+  const logAnotherShift = () => {
+    setForm({ ...EMPTY_FORM, date: todayIn(timezone) });
+    setFormKey((k) => k + 1);
+  };
 
   const selectedServiceType = serviceTypes.find((s) => s.id === serviceTypeId);
 
@@ -391,11 +399,10 @@ export function ShiftLogger({
       </div>
 
       <Breakdown
+        key={formKey}
         result={result}
         error={error}
-        formAction={formAction}
-        pending={pending}
-        saveState={saveState}
+        onLogAnother={logAnotherShift}
         hiddenFields={{
           orgId: activeOrgId,
           serviceTypeId,
@@ -422,18 +429,16 @@ export function ShiftLogger({
 function Breakdown({
   result,
   error,
-  formAction,
-  pending,
-  saveState,
+  onLogAnother,
   hiddenFields,
 }: {
   result: PricingResult | null;
   error: string | null;
-  formAction: (formData: FormData) => void;
-  pending: boolean;
-  saveState: { error?: string; savedShiftId?: string; totalCents?: number };
+  onLogAnother: () => void;
   hiddenFields: Record<string, string>;
 }) {
+  const [saveState, formAction, pending] = useActionState(saveShiftAction, {});
+
   return (
     <aside className="sticky bottom-0 lg:top-6 lg:bottom-auto" aria-live="polite" aria-label="What you will bill">
       <form action={formAction} className="card space-y-4">
@@ -497,11 +502,16 @@ function Breakdown({
         )}
 
         {saveState.savedShiftId ? (
-          <div className="rounded-lg bg-good/10 px-3 py-3 text-sm text-good">
-            Shift saved — {formatCents(saveState.totalCents ?? 0)} added to your pending invoice.{' '}
-            <Link href="/invoice" className="font-semibold underline">
-              Go to invoicing
-            </Link>
+          <div className="space-y-3">
+            <div className="rounded-lg bg-good/10 px-3 py-3 text-sm text-good">
+              Shift saved — {formatCents(saveState.totalCents ?? 0)} added to your pending invoice.{' '}
+              <Link href="/invoice" className="font-semibold underline">
+                Go to invoicing
+              </Link>
+            </div>
+            <button type="button" className="btn-primary w-full" onClick={onLogAnother}>
+              Log another shift
+            </button>
           </div>
         ) : (
           <button type="submit" className="btn-primary w-full" disabled={!result || pending}>
