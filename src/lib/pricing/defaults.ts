@@ -25,6 +25,15 @@ export const DEFAULT_TIME_BANDS: TimeBandDef[] = [
   { key: 'EVENING', startMinuteOfDay: 20 * 60, endMinuteOfDay: 24 * 60 },
 ];
 
+/**
+ * A single band spanning the whole day, for rate cards billing one rate per
+ * day type with no morning/evening/night split. segmentInterval still cuts
+ * at every local midnight regardless, so this produces exactly one segment
+ * per calendar day — no engine changes needed, this is the only piece that
+ * differs from DEFAULT_TIME_BANDS.
+ */
+export const DEFAULT_DAILY_TIME_BAND: TimeBandDef[] = [{ key: 'DAY', startMinuteOfDay: 0, endMinuteOfDay: 24 * 60 }];
+
 /** Sleepover defaults straight from the guide: a continuous 8-hour span including 2 active hours. */
 export const DEFAULT_SLEEPOVER_SPAN_HOURS = 8;
 export const DEFAULT_SLEEPOVER_INCLUDED_ACTIVE_HOURS = 2;

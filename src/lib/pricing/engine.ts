@@ -111,6 +111,11 @@ export function priceShift(
   segments = applyClassificationStrategy(segments, card, trace);
 
   // -------------------------------------------------------- hourly line items
+  // A rate card with only one band (a "daily rate" card, see DEFAULT_DAILY_TIME_BAND)
+  // has no real time-of-day distinction to describe — every segment's bandKey is
+  // just whatever key that single band happens to use, not a meaningful "daytime"
+  // vs "evening" split, so it's left out of anything shown to a worker or business.
+  const showBand = card.bands.length > 1;
   let billableMinutes = 0;
   for (const segment of segments) {
     const rounded = roundMinutes(segment.minutes, card.rounding.minuteIncrement, card.rounding.mode);
@@ -120,10 +125,11 @@ export function priceShift(
     const { rateCents, def } = resolveRate(card, shift.serviceTypeId, segment.dayType, segment.bandKey, warnings);
     const amountCents = amountForMinutes(rounded, rateCents);
     const gstApplicable = isGstApplicable(shift, card);
+    const bandLabel = showBand ? ` ${describeBand(segment.bandKey)}` : '';
 
     lines.push({
       kind: 'HOURLY',
-      description: `${describeDayType(segment.dayType)} ${describeBand(segment.bandKey)} — ${formatRange(segment.start, segment.end)}`,
+      description: `${describeDayType(segment.dayType)}${bandLabel} — ${formatRange(segment.start, segment.end)}`,
       startLocal: segment.start.toISO() ?? undefined,
       endLocal: segment.end.toISO() ?? undefined,
       dayType: segment.dayType,
@@ -139,7 +145,7 @@ export function priceShift(
 
     trace.push(
       `${formatLocal(segment.start)}–${formatLocalTime(segment.end)}: ` +
-        `${describeDayType(segment.dayType)} ${describeBand(segment.bandKey)}, ` +
+        `${describeDayType(segment.dayType)}${bandLabel}, ` +
         `${formatHours(rounded / 60)} × ${formatCents(rateCents)}/h = ${formatCents(amountCents)}`,
     );
   }

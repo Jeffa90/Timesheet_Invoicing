@@ -3,7 +3,7 @@
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { DEFAULT_TIME_BANDS } from '@/lib/pricing/defaults';
+import { DEFAULT_DAILY_TIME_BAND, DEFAULT_TIME_BANDS } from '@/lib/pricing/defaults';
 import { getPrimaryAdminOrg, requireSessionUser } from '@/lib/session';
 import { markOnboardingStepComplete } from '@/lib/actions/onboarding';
 
@@ -19,6 +19,7 @@ const rateLineSchema = z.object({
 
 const rateCardSchema = z.object({
   name: z.string().trim().min(1),
+  dailyRatesOnly: z.boolean(),
   classificationStrategy: z.enum(['SEGMENTED', 'SHIFT_START', 'MAJORITY']),
   roundingIncrementMin: z.coerce.number().int().min(1).max(60),
   roundingMode: z.enum(['NEAREST', 'UP', 'DOWN']),
@@ -76,6 +77,7 @@ export async function saveRateCardAction(
         where: { id: existing.id },
         data: {
           name: data.name,
+          dailyRatesOnly: data.dailyRatesOnly,
           version: { increment: 1 },
           classificationStrategy: data.classificationStrategy,
           roundingIncrementMin: data.roundingIncrementMin,
@@ -87,6 +89,7 @@ export async function saveRateCardAction(
         data: {
           orgId: org.id,
           name: data.name,
+          dailyRatesOnly: data.dailyRatesOnly,
           status: 'ACTIVE',
           effectiveFrom: new Date(),
           classificationStrategy: data.classificationStrategy,
@@ -96,18 +99,23 @@ export async function saveRateCardAction(
         },
       });
 
-  for (const band of DEFAULT_TIME_BANDS) {
-    await db.timeBand.upsert({
-      where: { rateCardId_key: { rateCardId: rateCard.id, key: band.key } },
-      update: { startMinuteOfDay: band.startMinuteOfDay, endMinuteOfDay: band.endMinuteOfDay },
-      create: {
-        rateCardId: rateCard.id,
-        key: band.key,
-        startMinuteOfDay: band.startMinuteOfDay,
-        endMinuteOfDay: band.endMinuteOfDay,
-      },
-    });
-  }
+  // Full replace, same reasoning as the rate lines below: switching between
+  // banded and daily mode changes which bands should exist at all (not just
+  // their values), and upsert-by-key never removes a band that's no longer
+  // wanted — a stale EVENING/NIGHT band left behind after switching to daily
+  // mode wouldn't break rate resolution, but would needlessly re-fragment
+  // every shift into 3 identically-priced line items at the old 6am/8pm
+  // boundaries, since segmentInterval unions in every band's boundaries.
+  await db.timeBand.deleteMany({ where: { rateCardId: rateCard.id } });
+  const bands = data.dailyRatesOnly ? DEFAULT_DAILY_TIME_BAND : DEFAULT_TIME_BANDS;
+  await db.timeBand.createMany({
+    data: bands.map((band) => ({
+      rateCardId: rateCard.id,
+      key: band.key,
+      startMinuteOfDay: band.startMinuteOfDay,
+      endMinuteOfDay: band.endMinuteOfDay,
+    })),
+  });
 
   // The rate lines are a full replace each save — simpler and safer than diffing
   // against a small, wizard-managed set, and shifts already priced keep their own

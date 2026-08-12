@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_TIME_BANDS } from './defaults';
+import { DEFAULT_DAILY_TIME_BAND, DEFAULT_TIME_BANDS } from './defaults';
 import { priceShift } from './engine';
 import type { PricingResult, PublicHolidayDef, RateCardSnapshot, ShiftInput } from './types';
 
@@ -175,6 +175,33 @@ describe('line descriptions', () => {
 
     const sleepover = result.lines.find((l) => l.kind === 'SLEEPOVER');
     expect(sleepover?.description).toBe('Night-time sleepover — 10:00pm to 6:00am 19 Jul');
+  });
+});
+
+describe('daily-rate cards', () => {
+  const dailyCard = testCard({
+    bands: DEFAULT_DAILY_TIME_BAND,
+    rates: [
+      { serviceTypeId: SERVICE, dayType: 'WEEKDAY', bandKey: null, method: 'ABSOLUTE', amountCents: RATES.weekdayDay },
+      { serviceTypeId: SERVICE, dayType: 'SATURDAY', bandKey: null, method: 'ABSOLUTE', amountCents: RATES.saturday },
+      { serviceTypeId: SERVICE, dayType: 'SUNDAY', bandKey: null, method: 'ABSOLUTE', amountCents: RATES.sunday },
+      { serviceTypeId: SERVICE, dayType: 'PUBLIC_HOLIDAY', bandKey: null, method: 'ABSOLUTE', amountCents: RATES.publicHoliday },
+    ],
+  });
+
+  it('bills a shift spanning evening and night at the single weekday rate, as one line', () => {
+    // Would be two HOURLY lines (day + evening) on a banded card — see
+    // 'splits a shift crossing the 8pm evening boundary' above.
+    const result = priceShift(shift('2025-07-16T18:00', '2025-07-16T22:00'), dailyCard);
+
+    expect(summarise(result)).toEqual([{ kind: 'HOURLY', hours: 4, rate: RATES.weekdayDay, amount: 20000 }]);
+  });
+
+  it('still splits at a day-type change, just without a band label', () => {
+    const result = priceShift(shift('2025-07-18T22:00', '2025-07-19T02:00'), dailyCard);
+
+    expect(result.lines[0].description).toBe('Weekday — 10:00pm to 12:00am');
+    expect(result.lines[1].description).toBe('Saturday — 12:00am to 2:00am');
   });
 });
 

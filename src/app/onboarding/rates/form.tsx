@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { useActionState, useMemo, useState } from 'react';
 import { saveRateCardAction } from '@/lib/actions/rate-card';
 import { formatCents } from '@/lib/pricing/money';
@@ -43,6 +44,7 @@ interface TravelValue {
 
 interface Defaults {
   name: string;
+  dailyRatesOnly: boolean;
   classificationStrategy: 'SEGMENTED' | 'SHIFT_START' | 'MAJORITY';
   roundingIncrementMin: number;
   roundingMode: 'NEAREST' | 'UP' | 'DOWN';
@@ -55,12 +57,14 @@ const DIM_LABEL: Record<string, string> = {
   'WEEKDAY:DAY': 'Weekday · daytime (6am–8pm)',
   'WEEKDAY:EVENING': 'Weekday · evening (8pm–midnight)',
   'WEEKDAY:NIGHT': 'Weekday · night (midnight–6am)',
+  'WEEKDAY:null': 'Weekday (all day)',
   'SATURDAY:null': 'Saturday (all day)',
   'SUNDAY:null': 'Sunday (all day)',
   'PUBLIC_HOLIDAY:null': 'Public holiday (all day)',
 };
 
 export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue[]; defaults: Defaults }) {
+  const router = useRouter();
   const [lines, setLines] = useState(rateLines);
   const [meta, setMeta] = useState(defaults);
   const [state, formAction, pending] = useActionState(saveRateCardAction, {});
@@ -107,6 +111,19 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
           value={meta.name}
           onChange={(e) => setMeta((m) => ({ ...m, name: e.target.value }))}
         />
+
+        <label className="flex items-center gap-2 text-sm text-ink-soft">
+          <input
+            type="checkbox"
+            checked={meta.dailyRatesOnly}
+            onChange={(e) => {
+              const dailyRatesOnly = e.target.checked;
+              setMeta((m) => ({ ...m, dailyRatesOnly }));
+              router.push(`/onboarding/rates?daily=${dailyRatesOnly}`);
+            }}
+          />
+          Bill a single rate per day — no morning/evening/night split
+        </label>
       </div>
 
       {[...byService.entries()].map(([serviceTypeId, { name, rows }]) => (

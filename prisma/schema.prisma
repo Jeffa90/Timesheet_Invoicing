@@ -218,6 +218,10 @@ model RateCard {
   effectiveFrom DateTime
   effectiveTo   DateTime?
 
+  /// One rate per day type (weekday/Saturday/Sunday/public holiday), no
+  /// morning/evening/night split — drives DIMENSIONS in the rates wizard and
+  /// which TimeBand rows get written below.
+  dailyRatesOnly         Boolean                @default(false)
   classificationStrategy ClassificationStrategy @default(SEGMENTED)
   roundingIncrementMin   Int                    @default(1)
   roundingMode           RoundingMode           @default(NEAREST)

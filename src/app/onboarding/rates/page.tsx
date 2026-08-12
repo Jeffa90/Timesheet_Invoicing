@@ -13,7 +13,11 @@ const DIMENSIONS: { dayType: 'WEEKDAY' | 'SATURDAY' | 'SUNDAY' | 'PUBLIC_HOLIDAY
   { dayType: 'PUBLIC_HOLIDAY', bandKey: null, capCents: DEFAULT_CAPS.publicHolidayCents },
 ];
 
-export default async function RatesStepPage() {
+// One rate for the whole weekday instead of day/evening/night — same shape
+// Saturday/Sunday/public holiday already use.
+const DAILY_WEEKDAY_DIMENSION = { dayType: 'WEEKDAY' as const, bandKey: null, capCents: null };
+
+export default async function RatesStepPage({ searchParams }: { searchParams: Promise<{ daily?: string }> }) {
   const { org } = await getOnboardingContext();
   if (!org) redirect('/onboarding/business');
 
@@ -25,14 +29,25 @@ export default async function RatesStepPage() {
     include: { rates: true, sleepover: true, travel: true },
   });
 
+  // The ?daily= query param lets the "daily rates" checkbox force a fresh
+  // server render (and therefore fresh DIMENSIONS) before anything is saved —
+  // the form's own client state only reads its initial props once, so a
+  // purely client-side toggle would never reshape the visible rows.
+  const { daily } = await searchParams;
+  const dailyRatesOnly = daily === 'true' ? true : daily === 'false' ? false : (existingCard?.dailyRatesOnly ?? false);
+
+  const weekdayDimensions = dailyRatesOnly ? [DAILY_WEEKDAY_DIMENSION] : DIMENSIONS.filter((d) => d.dayType === 'WEEKDAY');
+  const dimensions = [...weekdayDimensions, ...DIMENSIONS.filter((d) => d.dayType !== 'WEEKDAY')];
+
   const existingLineFor = (serviceTypeId: string, dayType: string, bandKey: string | null) =>
     existingCard?.rates.find((r) => r.serviceTypeId === serviceTypeId && r.dayType === dayType && r.bandKey === bandKey);
 
   const rateLines: RateLineValue[] = serviceTypes.flatMap((service) =>
-    DIMENSIONS.map((dim) => {
+    dimensions.map((dim) => {
       const existing = existingLineFor(service.id, dim.dayType, dim.bandKey);
-      // A flat-rate service (e.g. admin hours) isn't an NDIS catalogue item — no
-      // published price cap, so it's always a flat $/h entered directly.
+      // A flat-rate service (e.g. admin hours), or a daily-rate weekday row,
+      // isn't an NDIS catalogue item — no published price cap, so it's
+      // always a flat $/h entered directly.
       const capCents = service.flatRate ? null : dim.capCents;
       return {
         serviceTypeId: service.id,
@@ -60,9 +75,11 @@ export default async function RatesStepPage() {
       </div>
 
       <RateCardForm
+        key={dailyRatesOnly ? 'daily' : 'banded'}
         rateLines={rateLines}
         defaults={{
           name: existingCard?.name ?? `${org.name} — subcontractor rates`,
+          dailyRatesOnly,
           classificationStrategy: existingCard?.classificationStrategy ?? 'SEGMENTED',
           roundingIncrementMin: existingCard?.roundingIncrementMin ?? 1,
           roundingMode: existingCard?.roundingMode ?? 'NEAREST',
