@@ -1,24 +1,16 @@
 import { notFound } from 'next/navigation';
-import { db } from '@/lib/db';
 import { formatInvoiceDate, formatInvoiceDateShort, type InvoiceParty } from '@/lib/invoice';
+import { loadInvoiceForViewer } from '@/lib/invoice-access';
 import { formatCents, formatHours } from '@/lib/pricing/money';
-import { isOrgAdmin, requireSessionUser } from '@/lib/session';
 import { MarkPaidForm } from './mark-paid-form';
 import { MarkUnpaidButton } from './mark-unpaid-button';
 import { SendButton } from './send-button';
 
 export default async function InvoiceDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireSessionUser();
-
-  const invoice = await db.invoice.findUnique({
-    where: { id },
-    include: { lines: { orderBy: { sortOrder: 'asc' } }, org: true },
-  });
-
-  const isOwner = invoice?.userId === user.id;
-  const isBusinessViewer = invoice ? !isOwner && (await isOrgAdmin(user.id, invoice.orgId)) : false;
-  if (!invoice || (!isOwner && !isBusinessViewer)) notFound();
+  const loaded = await loadInvoiceForViewer(id);
+  if (!loaded) notFound();
+  const { invoice, isOwner, isBusinessViewer } = loaded;
 
   const from = invoice.fromSnapshot as unknown as InvoiceParty;
   const to = invoice.toSnapshot as unknown as InvoiceParty;
@@ -129,13 +121,14 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="mx-auto flex max-w-2xl justify-end gap-2">
+        <a href={`/invoice/${invoice.id}/pdf`} className="btn btn-secondary">
+          Download PDF
+        </a>
         {isOwner && invoice.status === 'DRAFT' && <SendButton invoiceId={invoice.id} />}
         {isBusinessViewer && invoice.status === 'SENT' && <MarkPaidForm invoiceId={invoice.id} />}
         {isBusinessViewer && invoice.status === 'PAID' && <MarkUnpaidButton invoiceId={invoice.id} />}
       </div>
-      <p className="mx-auto max-w-2xl text-right text-xs text-ink-faint">
-        PDF export and email delivery aren&apos;t wired up yet — see the README.
-      </p>
+      <p className="mx-auto max-w-2xl text-right text-xs text-ink-faint">Email delivery isn&apos;t wired up yet — see the README.</p>
     </div>
   );
 }
