@@ -54,6 +54,12 @@ export async function generateInvoiceAction(
     [workerProfile.suburb, workerProfile.state, workerProfile.postcode].filter(Boolean).join(' '),
   ].filter((line): line is string => Boolean(line));
 
+  const orgAddressLines = [
+    org.addressLine1,
+    org.addressLine2,
+    [org.suburb, org.state, org.postcode].filter(Boolean).join(' '),
+  ].filter((line): line is string => Boolean(line));
+
   const doc = buildInvoice({
     shifts: shiftsForInvoice,
     from: {
@@ -65,7 +71,14 @@ export async function generateInvoiceAction(
       email: user.email ?? undefined,
       phone: workerProfile.phone ?? undefined,
     },
-    to: { name: org.name, abn: org.abn ?? undefined },
+    to: {
+      name: org.legalName ?? org.name,
+      businessName: org.name,
+      abn: org.abn ?? undefined,
+      addressLines: orgAddressLines.length > 0 ? orgAddressLines : undefined,
+      email: org.email ?? undefined,
+      phone: org.phone ?? undefined,
+    },
     number,
     issueDate,
     termsDays: org.invoiceTermsDays,
@@ -91,12 +104,13 @@ export async function generateInvoiceAction(
         dueDate: DateTime.fromISO(doc.dueDate, { zone: org.timezone }).toJSDate(),
         periodStart: DateTime.fromISO(doc.periodStart, { zone: org.timezone }).toJSDate(),
         periodEnd: DateTime.fromISO(doc.periodEnd, { zone: org.timezone }).toJSDate(),
-        fromSnapshot: JSON.parse(JSON.stringify(doc.from)),
+        fromSnapshot: JSON.parse(JSON.stringify({ ...doc.from, bankDetails: doc.bankDetails })),
         toSnapshot: JSON.parse(JSON.stringify(doc.to)),
         subtotalCents: doc.subtotalCents,
         gstCents: doc.gstCents,
         totalCents: doc.totalCents,
         isTaxInvoice: doc.isTaxInvoice,
+        notes: doc.notes,
         lines: {
           create: doc.lines.map((line, index) => ({
             sortOrder: index,

@@ -22,6 +22,10 @@ export interface InvoiceParty {
   addressLines?: string[];
   email?: string;
   phone?: string;
+  /** Only ever set on the `from` party — folded into fromSnapshot at generation
+   * time so a reissued invoice always shows the payment details it showed on
+   * the day it was sent, same as every other frozen field on this type. */
+  bankDetails?: { bsb: string; accountNumber: string; accountName: string };
 }
 
 export interface InvoiceDocLine {
@@ -122,6 +126,11 @@ function toDocLine(date: string, line: PricedLine, shiftId?: string): InvoiceDoc
 
 export function formatInvoiceDate(iso: string, timezone: string): string {
   return DateTime.fromISO(iso, { zone: timezone }).toFormat('d LLLL yyyy');
+}
+
+/** dd/MM/yyyy — used only in the invoice document's own header metadata table. */
+export function formatInvoiceDateShort(iso: string, timezone: string): string {
+  return DateTime.fromISO(iso, { zone: timezone }).toFormat('dd/LL/yyyy');
 }
 
 /** Next number in a worker's own sequence, e.g. INV-0007. */

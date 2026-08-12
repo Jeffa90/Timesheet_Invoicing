@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { db } from '@/lib/db';
-import { formatInvoiceDate, type InvoiceParty } from '@/lib/invoice';
+import { formatInvoiceDate, formatInvoiceDateShort, type InvoiceParty } from '@/lib/invoice';
 import { formatCents, formatHours } from '@/lib/pricing/money';
 import { isOrgAdmin, requireSessionUser } from '@/lib/session';
 import { MarkPaidForm } from './mark-paid-form';
@@ -41,36 +41,22 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <div className="card mx-auto max-w-2xl bg-white p-8 text-sm">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-ink">{invoice.isTaxInvoice ? 'Tax Invoice' : 'Invoice'}</h2>
-            <p className="mt-1 text-ink-soft">{invoice.number}</p>
-          </div>
-          <div className="text-right text-ink-soft">
-            <p>Issued {formatInvoiceDate(invoice.issueDate.toISOString().slice(0, 10), timezone)}</p>
-            <p>Due {formatInvoiceDate(invoice.dueDate.toISOString().slice(0, 10), timezone)}</p>
-          </div>
+        {/* Masthead: the heading and the worker's own identity read together as one block. */}
+        <div className="text-right">
+          <h2 className="text-2xl font-bold tracking-tight text-ink">{invoice.isTaxInvoice ? 'Tax Invoice' : 'Invoice'}</h2>
+          <PartyIdentity party={from} />
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-6 border-y border-surface-line py-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">From</p>
-            <p className="mt-1 font-semibold text-ink">{from.businessName ?? from.name}</p>
-            <p className="text-ink-soft">{from.name}</p>
-            {from.addressLines?.map((line) => (
-              <p key={line} className="text-ink-soft">
-                {line}
-              </p>
-            ))}
-            {from.abn && <p className="text-ink-soft">ABN {from.abn}</p>}
-            {from.acn && <p className="text-ink-soft">ACN {from.acn}</p>}
-            {from.phone && <p className="text-ink-soft">{from.phone}</p>}
-            {from.email && <p className="text-ink-soft">{from.email}</p>}
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">To</p>
-            <p className="mt-1 font-semibold text-ink">{to.businessName ?? to.name}</p>
-            {to.abn && <p className="text-ink-soft">ABN {to.abn}</p>}
+        {/* Who it's for, and the invoice's own metadata. */}
+        <div className="mt-6 flex items-start justify-between gap-6 border-t border-surface-line pt-4">
+          <PartyIdentity party={to} />
+          <div className="shrink-0 text-right">
+            <MetaRow label="Invoice number" value={invoice.number} emphasize />
+            <MetaRow label="Invoice date" value={formatInvoiceDateShort(invoice.issueDate.toISOString().slice(0, 10), timezone)} />
+            <MetaRow label="Payment due" value={formatInvoiceDateShort(invoice.dueDate.toISOString().slice(0, 10), timezone)} />
+            <div className="h-2" />
+            <MetaRow label="Period start" value={formatInvoiceDateShort(invoice.periodStart.toISOString().slice(0, 10), timezone)} />
+            <MetaRow label="Period end" value={formatInvoiceDateShort(invoice.periodEnd.toISOString().slice(0, 10), timezone)} />
           </div>
         </div>
 
@@ -104,24 +90,42 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
           </tbody>
         </table>
 
-        <div className="ml-auto mt-4 w-52 space-y-1 text-sm">
+        <div className="ml-auto mt-4 w-64 space-y-1 text-sm">
           <div className="flex justify-between text-ink-soft">
-            <span>Subtotal</span>
+            <span>Subtotal (excl GST)</span>
             <span className="tabular-nums">{formatCents(invoice.subtotalCents)}</span>
           </div>
-          {invoice.isTaxInvoice && (
-            <div className="flex justify-between text-ink-soft">
-              <span>GST</span>
-              <span className="tabular-nums">{formatCents(invoice.gstCents)}</span>
-            </div>
-          )}
+          <div className="flex justify-between text-ink-soft">
+            <span>Total GST</span>
+            <span className="tabular-nums">{formatCents(invoice.gstCents)}</span>
+          </div>
           <div className="flex justify-between border-t border-surface-line pt-1 text-base font-bold text-ink">
-            <span>Total</span>
-            <span className="tabular-nums">{formatCents(invoice.totalCents)}</span>
+            <span>Amount due</span>
+            <span className="tabular-nums">{formatCents(invoice.totalCents)} AUD</span>
           </div>
         </div>
 
-        {!invoice.isTaxInvoice && <p className="mt-4 text-xs text-ink-faint">No GST has been charged on this invoice.</p>}
+        {from.bankDetails && (
+          <div className="mt-6 border-t border-surface-line pt-4">
+            <p className="font-semibold text-ink">Please make payment to:</p>
+            <div className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-ink-soft">
+              <span>Account name:</span>
+              <span>{from.bankDetails.accountName}</span>
+              <span>BSB:</span>
+              <span>{from.bankDetails.bsb}</span>
+              <span>Account number:</span>
+              <span>{from.bankDetails.accountNumber}</span>
+              <span>Reference:</span>
+              <span>{invoice.number}</span>
+            </div>
+          </div>
+        )}
+
+        {invoice.notes && <p className="mt-4 text-ink-soft">{invoice.notes}</p>}
+
+        <p className="mt-4 text-xs text-ink-faint">
+          For any enquiries relating to this Invoice please contact {from.name}.
+        </p>
       </div>
 
       <div className="mx-auto flex max-w-2xl justify-end gap-2">
@@ -133,5 +137,40 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         PDF export and email delivery aren&apos;t wired up yet — see the README.
       </p>
     </div>
+  );
+}
+
+/**
+ * A party's identity, in the order requested for every invoice: trading name
+ * (bold) — the legal/personal name too, only if it differs — then the ABN
+ * directly underneath with no gap, then a visual gap, then everything else.
+ * Used for both the worker (in the masthead, right-aligned) and the business
+ * (in the second row, left-aligned) so the two sides read consistently.
+ */
+function PartyIdentity({ party }: { party: InvoiceParty }) {
+  const heading = party.businessName ?? party.name;
+  const showLegalName = party.businessName && party.name !== party.businessName;
+
+  return (
+    <div>
+      <p className="font-bold text-ink">{heading}</p>
+      {showLegalName && <p className="text-ink-soft">{party.name}</p>}
+      {party.abn && <p className="font-bold text-ink-soft">ABN: {party.abn}</p>}
+      <div className="mt-2 space-y-0.5 text-ink-faint">
+        {party.acn && <p>ACN {party.acn}</p>}
+        {party.addressLines?.map((line) => <p key={line}>{line}</p>)}
+        {party.phone && <p>{party.phone}</p>}
+        {party.email && <p>{party.email}</p>}
+      </div>
+    </div>
+  );
+}
+
+function MetaRow({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
+  return (
+    <p className="flex justify-between gap-4 text-ink-soft">
+      <span className="font-medium text-ink">{label}:</span>
+      <span className={emphasize ? 'font-bold text-ink' : 'tabular-nums'}>{value}</span>
+    </p>
   );
 }
