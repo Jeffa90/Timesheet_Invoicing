@@ -59,6 +59,24 @@ export async function isOrgAdmin(userId: string, orgId: string): Promise<boolean
   return Boolean(membership && membership.status === 'ACTIVE' && ['OWNER', 'ADMIN', 'COORDINATOR'].includes(membership.role));
 }
 
+/**
+ * Whether the signed-in user has ever accepted a worker invite anywhere —
+ * i.e. whether they're a worker at all, as opposed to purely running a
+ * business. A worker Membership only ever exists via accepting an invite
+ * (see acceptInviteAction), so a business owner who's never also signed up
+ * as someone's worker has none.
+ *
+ * Wrapped in cache() for the same reason as getPrimaryAdminOrg: the root
+ * layout calls this once to decide whether to show WORKER_NAV.
+ */
+export const hasWorkerAccess = cache(async (userId: string) => {
+  const membership = await db.membership.findFirst({
+    where: { userId, status: 'ACTIVE', role: 'WORKER' },
+    select: { id: true },
+  });
+  return Boolean(membership);
+});
+
 /** Every business a signed-in worker currently has an active engagement with. */
 export async function getWorkerEngagements(userId: string) {
   return db.engagement.findMany({

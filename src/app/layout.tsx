@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import { signOutAction } from '@/lib/actions/auth';
-import { getPrimaryAdminOrg, getSessionUser } from '@/lib/session';
+import { getPrimaryAdminOrg, getSessionUser, hasWorkerAccess } from '@/lib/session';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -18,8 +18,9 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-// Always shown — the pages behind these already degrade gracefully with no
-// engagements, so there's no harm showing them to someone who's business-only.
+// Only shown to someone who's actually a worker somewhere (see
+// hasWorkerAccess) — otherwise these are dead ends for a business-only
+// account, symmetric to how BUSINESS_NAV is gated below.
 const WORKER_NAV = [
   { href: '/', label: 'Log a shift' },
   { href: '/shifts', label: 'My Shifts' },
@@ -40,6 +41,7 @@ const BUSINESS_NAV = [
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getSessionUser();
   const adminOrg = user ? await getPrimaryAdminOrg(user.id) : null;
+  const isWorker = user ? await hasWorkerAccess(user.id) : false;
 
   return (
     <html lang="en-AU">
@@ -66,18 +68,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
             {user && (
               <nav aria-label="Main" className="flex items-center gap-1">
-                {WORKER_NAV.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft hover:bg-surface-sunk hover:text-ink"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
+                {isWorker &&
+                  WORKER_NAV.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="rounded-lg px-3 py-2 text-sm font-medium text-ink-soft hover:bg-surface-sunk hover:text-ink"
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
                 {adminOrg && (
                   <>
-                    <span aria-hidden className="mx-1 h-5 w-px bg-surface-line" />
+                    {isWorker && <span aria-hidden className="mx-1 h-5 w-px bg-surface-line" />}
                     {BUSINESS_NAV.map((item) => (
                       <Link
                         key={item.href}
