@@ -15,6 +15,7 @@ const serviceTypeSchema = z.object({
 });
 
 const formSchema = z.object({ serviceTypes: z.array(serviceTypeSchema).min(1) });
+const modeSchema = z.enum(['onboarding', 'manage']);
 
 export interface ServiceTypesActionState {
   error?: string;
@@ -23,6 +24,11 @@ export interface ServiceTypesActionState {
 /**
  * The wizard submits the whole list as one JSON blob (a hidden field built up by the
  * client) rather than N separate named fields, since the number of rows is dynamic.
+ *
+ * mode 'onboarding' (default): the setup wizard's original behaviour — continue on
+ * to the rates step. mode 'manage': a business adding/editing services after setup
+ * is already complete (e.g. adding an Admin Hours support later) — stays on the
+ * services page instead of re-entering the wizard.
  */
 export async function saveServiceTypesAction(
   _prev: ServiceTypesActionState,
@@ -31,6 +37,8 @@ export async function saveServiceTypesAction(
   const user = await requireSessionUser();
   const org = await getPrimaryAdminOrg(user.id);
   if (!org) redirect('/onboarding/business');
+
+  const mode = modeSchema.catch('onboarding').parse(formData.get('mode'));
 
   let raw: unknown;
   try {
@@ -78,6 +86,9 @@ export async function saveServiceTypesAction(
     data: { active: false },
   });
 
-  await markOnboardingStepComplete(user.id, org.id, 'services');
-  redirect('/onboarding/rates');
+  if (mode === 'onboarding') {
+    await markOnboardingStepComplete(user.id, org.id, 'services');
+    redirect('/onboarding/rates');
+  }
+  redirect('/business/services');
 }

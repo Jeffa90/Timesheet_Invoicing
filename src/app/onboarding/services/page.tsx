@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
+import { ServicesForm } from '@/components/services-form';
 import { db } from '@/lib/db';
 import { getOnboardingContext } from '@/lib/actions/onboarding-context';
-import { ServicesForm } from './form';
 
 export default async function ServicesStepPage() {
   const { org } = await getOnboardingContext();

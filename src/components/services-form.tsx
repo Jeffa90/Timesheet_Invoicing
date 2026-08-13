@@ -11,7 +11,16 @@ interface Row {
   flatRate: boolean;
 }
 
-export function ServicesForm({ initial }: { initial: Row[] }) {
+export function ServicesForm({
+  initial,
+  mode = 'onboarding',
+  submitLabel = 'Continue',
+}: {
+  initial: Row[];
+  /** Which saveServiceTypesAction path this submits to — see the action's own docs. */
+  mode?: 'onboarding' | 'manage';
+  submitLabel?: string;
+}) {
   const [rows, setRows] = useState<Row[]>(initial);
   const [state, formAction, pending] = useActionState(saveServiceTypesAction, {});
   const baseId = useId();
@@ -22,6 +31,7 @@ export function ServicesForm({ initial }: { initial: Row[] }) {
   return (
     <form action={formAction} className="card space-y-4">
       <input type="hidden" name="serviceTypes" value={JSON.stringify(rows)} readOnly />
+      <input type="hidden" name="mode" value={mode} readOnly />
 
       <div className="space-y-3">
         {rows.map((row, index) => (
@@ -102,7 +112,7 @@ export function ServicesForm({ initial }: { initial: Row[] }) {
       )}
 
       <button type="submit" className="btn-primary w-full" disabled={pending}>
-        {pending ? 'Saving…' : 'Continue'}
+        {pending ? 'Saving…' : submitLabel}
       </button>
     </form>
   );
