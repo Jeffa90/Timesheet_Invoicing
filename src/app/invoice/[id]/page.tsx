@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { formatInvoiceDate, formatInvoiceDateShort, type InvoiceParty } from '@/lib/invoice';
 import { loadInvoiceForViewer } from '@/lib/invoice-access';
 import { formatCents, formatHours } from '@/lib/pricing/money';
+import { DeleteInvoiceButton } from './delete-invoice-button';
 import { MarkPaidForm } from './mark-paid-form';
 import { MarkUnpaidButton } from './mark-unpaid-button';
 import { SendButton } from './send-button';
@@ -120,13 +121,16 @@ export default async function InvoiceDetailPage({ params }: { params: Promise<{ 
         </p>
       </div>
 
-      <div className="mx-auto flex max-w-2xl justify-end gap-2">
-        <a href={`/invoice/${invoice.id}/pdf`} className="btn btn-secondary">
-          Download PDF
-        </a>
-        {isOwner && invoice.status === 'DRAFT' && <SendButton invoiceId={invoice.id} />}
-        {isBusinessViewer && invoice.status === 'SENT' && <MarkPaidForm invoiceId={invoice.id} />}
-        {isBusinessViewer && invoice.status === 'PAID' && <MarkUnpaidButton invoiceId={invoice.id} />}
+      <div className="mx-auto flex max-w-2xl items-center justify-between gap-2">
+        <div>{isOwner && invoice.status !== 'PAID' && <DeleteInvoiceButton invoiceId={invoice.id} />}</div>
+        <div className="flex gap-2">
+          <a href={`/invoice/${invoice.id}/pdf`} className="btn btn-secondary">
+            Download PDF
+          </a>
+          {isOwner && invoice.status === 'DRAFT' && <SendButton invoiceId={invoice.id} />}
+          {isBusinessViewer && invoice.status === 'SENT' && <MarkPaidForm invoiceId={invoice.id} />}
+          {isBusinessViewer && invoice.status === 'PAID' && <MarkUnpaidButton invoiceId={invoice.id} />}
+        </div>
       </div>
       <p className="mx-auto max-w-2xl text-right text-xs text-ink-faint">Email delivery isn&apos;t wired up yet — see the README.</p>
     </div>

@@ -106,6 +106,23 @@ describe('buildInvoice', () => {
       '2025-07-18',
     ]);
   });
+
+  it('uses an explicit period override instead of the shift date range', () => {
+    const invoice = buildInvoice({
+      shifts: [{ date: '2025-07-16', result: priced(false) }],
+      from,
+      to,
+      number: 'INV-0004',
+      issueDate: '2025-07-20',
+      termsDays: 7,
+      timezone: TZ,
+      periodStart: '2025-07-01',
+      periodEnd: '2025-07-14',
+    });
+
+    expect(invoice.periodStart).toBe('2025-07-01');
+    expect(invoice.periodEnd).toBe('2025-07-14');
+  });
 });
 
 describe('nextInvoiceNumber', () => {

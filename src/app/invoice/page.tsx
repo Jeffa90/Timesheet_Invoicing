@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import Link from 'next/link';
 import { db } from '@/lib/db';
 import { formatCents } from '@/lib/pricing/money';
@@ -29,7 +30,10 @@ export default async function InvoicePage() {
     db.invoice.findMany({ where: { orgId: activeOrgId, userId: user.id }, orderBy: { issueDate: 'desc' } }),
   ]);
 
-  const totalCents = pendingShifts.reduce((sum, s) => sum + s.totalCents, 0);
+  const pendingShiftSummaries = pendingShifts.map((shift) => ({
+    date: DateTime.fromJSDate(shift.startUtc).setZone(shift.timezone).toFormat('yyyy-MM-dd'),
+    totalCents: shift.totalCents,
+  }));
 
   return (
     <div className="space-y-6">
@@ -47,7 +51,7 @@ export default async function InvoicePage() {
           .
         </p>
       ) : pendingShifts.length > 0 ? (
-        <GenerateForm orgId={activeOrgId} orgName={activeOrgName} shiftCount={pendingShifts.length} totalCents={totalCents} />
+        <GenerateForm orgId={activeOrgId} orgName={activeOrgName} pendingShifts={pendingShiftSummaries} />
       ) : (
         <p className="card text-sm text-ink-soft">
           No logged shifts are waiting to be invoiced.{' '}

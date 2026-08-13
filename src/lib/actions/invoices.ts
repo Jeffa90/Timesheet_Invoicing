@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { db } from '@/lib/db';
-import { buildInvoice, nextInvoiceNumber } from '@/lib/invoice';
+import { buildInvoice, calendarDateToUtcMidnight, nextInvoiceNumber } from '@/lib/invoice';
 import type { PricingResult } from '@/lib/pricing/types';
 import { requireSessionUser } from '@/lib/session';
 
@@ -14,23 +14,41 @@ export interface GenerateInvoiceState {
   invoiceId?: string;
 }
 
-const schema = z.object({ orgId: z.string().min(1) });
+const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const schema = z.object({
+  orgId: z.string().min(1),
+  periodStart: z.union([dateString, z.literal('')]).optional(),
+  periodEnd: z.union([dateString, z.literal('')]).optional(),
+});
 
 /**
- * Invoices every shift the worker has logged against this business that isn't
- * already on an invoice. There's no date-range picker: log shifts, then invoice
- * whatever's outstanding — splitting into custom periods is a later refinement.
+ * Invoices shifts the worker has logged against this business that aren't
+ * already on an invoice. With no period entered, every outstanding shift is
+ * included and the period shown on the invoice is just their date range. With
+ * a period entered, only shifts whose local date falls inside it are
+ * included (the rest stay pending for a later invoice), and the entered
+ * dates are used verbatim as the period — so a fixed pay cycle still reads
+ * correctly even if no shift lands exactly on its first or last day.
  */
 export async function generateInvoiceAction(
   _prev: GenerateInvoiceState,
   formData: FormData,
 ): Promise<GenerateInvoiceState> {
   const user = await requireSessionUser();
-  const parsed = schema.safeParse({ orgId: formData.get('orgId') });
+  const parsed = schema.safeParse({
+    orgId: formData.get('orgId'),
+    periodStart: formData.get('periodStart') || undefined,
+    periodEnd: formData.get('periodEnd') || undefined,
+  });
   if (!parsed.success) return { error: 'Choose which business to invoice.' };
   const { orgId } = parsed.data;
+  const periodStart = parsed.data.periodStart || undefined;
+  const periodEnd = parsed.data.periodEnd || undefined;
+  if (periodStart && periodEnd && periodStart > periodEnd) {
+    return { error: 'Period start must be on or before period end.' };
+  }
 
-  const [org, workerProfile, pendingShifts] = await Promise.all([
+  const [org, workerProfile, allPendingShifts] = await Promise.all([
     db.organisation.findUnique({ where: { id: orgId } }),
     db.workerProfile.findUnique({ where: { userId: user.id } }),
     db.shift.findMany({ where: { orgId, userId: user.id, status: 'SUBMITTED' }, orderBy: { startUtc: 'asc' } }),
@@ -38,7 +56,18 @@ export async function generateInvoiceAction(
 
   if (!org) return { error: 'That business could not be found.' };
   if (!workerProfile) return { error: 'Add your invoice details first.' };
-  if (pendingShifts.length === 0) return { error: 'No logged shifts are waiting to be invoiced.' };
+  if (allPendingShifts.length === 0) return { error: 'No logged shifts are waiting to be invoiced.' };
+
+  const withDate = allPendingShifts.map((shift) => ({
+    shift,
+    date: DateTime.fromJSDate(shift.startUtc).setZone(shift.timezone).toFormat('yyyy-MM-dd'),
+  }));
+  const pendingShifts = withDate
+    .filter(({ date }) => (!periodStart || date >= periodStart) && (!periodEnd || date <= periodEnd))
+    .map(({ shift }) => shift);
+  if (pendingShifts.length === 0) {
+    return { error: 'No logged shifts fall within that period.' };
+  }
 
   const shiftsForInvoice = pendingShifts.map((shift) => ({
     date: DateTime.fromJSDate(shift.startUtc).setZone(shift.timezone).toFormat('yyyy-MM-dd'),
@@ -83,6 +112,8 @@ export async function generateInvoiceAction(
     issueDate,
     termsDays: org.invoiceTermsDays,
     timezone: org.timezone,
+    periodStart,
+    periodEnd,
     bankDetails:
       workerProfile.bankBsb && workerProfile.bankAccountNumber && workerProfile.bankAccountName
         ? {
@@ -100,10 +131,10 @@ export async function generateInvoiceAction(
         userId: user.id,
         number: doc.number,
         status: 'DRAFT',
-        issueDate: DateTime.fromISO(doc.issueDate, { zone: org.timezone }).toJSDate(),
-        dueDate: DateTime.fromISO(doc.dueDate, { zone: org.timezone }).toJSDate(),
-        periodStart: DateTime.fromISO(doc.periodStart, { zone: org.timezone }).toJSDate(),
-        periodEnd: DateTime.fromISO(doc.periodEnd, { zone: org.timezone }).toJSDate(),
+        issueDate: calendarDateToUtcMidnight(doc.issueDate),
+        dueDate: calendarDateToUtcMidnight(doc.dueDate),
+        periodStart: calendarDateToUtcMidnight(doc.periodStart),
+        periodEnd: calendarDateToUtcMidnight(doc.periodEnd),
         fromSnapshot: JSON.parse(JSON.stringify({ ...doc.from, bankDetails: doc.bankDetails })),
         toSnapshot: JSON.parse(JSON.stringify(doc.to)),
         subtotalCents: doc.subtotalCents,
@@ -114,7 +145,7 @@ export async function generateInvoiceAction(
         lines: {
           create: doc.lines.map((line, index) => ({
             sortOrder: index,
-            serviceDate: DateTime.fromISO(line.serviceDate, { zone: org.timezone }).toJSDate(),
+            serviceDate: calendarDateToUtcMidnight(line.serviceDate),
             description: line.description,
             ndisLineItemCode: line.ndisLineItemCode,
             quantity: line.quantity,
@@ -152,4 +183,32 @@ export async function markInvoiceSentAction(invoiceId: string) {
 
   await db.invoice.update({ where: { id: invoiceId }, data: { status: 'SENT', sentAt: new Date() } });
   revalidatePath(`/invoice/${invoiceId}`);
+}
+
+/**
+ * Deletes an invoice the worker generated by mistake (wrong period, wrong
+ * shifts, etc.) and frees up the shifts on it to be invoiced again. Once an
+ * invoice is marked Paid it's treated as a real financial record and can no
+ * longer be deleted.
+ */
+export async function deleteInvoiceAction(invoiceId: string) {
+  const user = await requireSessionUser();
+  const invoice = await db.invoice.findUnique({
+    where: { id: invoiceId },
+    include: { lines: { select: { shiftId: true } } },
+  });
+  if (!invoice || invoice.userId !== user.id) return;
+  if (invoice.status === 'PAID') return;
+
+  const shiftIds = invoice.lines
+    .map((line) => line.shiftId)
+    .filter((id): id is string => Boolean(id));
+
+  await db.$transaction([
+    db.shift.updateMany({ where: { id: { in: shiftIds } }, data: { status: 'SUBMITTED' } }),
+    db.invoice.delete({ where: { id: invoiceId } }),
+  ]);
+
+  revalidatePath('/invoice');
+  redirect('/invoice');
 }

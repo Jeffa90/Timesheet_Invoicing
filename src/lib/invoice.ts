@@ -75,6 +75,13 @@ export interface BuildInvoiceOptions {
   timezone: string;
   bankDetails?: InvoiceDoc['bankDetails'];
   notes?: string;
+  /**
+   * Override the billing period instead of inferring it from the included
+   * shifts — e.g. a fixed fortnightly cycle that should read "1 Aug - 14 Aug"
+   * even if no shift happens to land exactly on either boundary day.
+   */
+  periodStart?: string;
+  periodEnd?: string;
 }
 
 export function buildInvoice(options: BuildInvoiceOptions): InvoiceDoc {
@@ -97,8 +104,8 @@ export function buildInvoice(options: BuildInvoiceOptions): InvoiceDoc {
     isTaxInvoice: gstCents > 0,
     issueDate,
     dueDate: issued.plus({ days: termsDays }).toFormat('yyyy-MM-dd'),
-    periodStart: dates[0] ?? issueDate,
-    periodEnd: dates[dates.length - 1] ?? issueDate,
+    periodStart: options.periodStart ?? dates[0] ?? issueDate,
+    periodEnd: options.periodEnd ?? dates[dates.length - 1] ?? issueDate,
     from,
     to,
     lines,
@@ -131,6 +138,19 @@ export function formatInvoiceDate(iso: string, timezone: string): string {
 /** dd/MM/yyyy — used only in the invoice document's own header metadata table. */
 export function formatInvoiceDateShort(iso: string, timezone: string): string {
   return DateTime.fromISO(iso, { zone: timezone }).toFormat('dd/LL/yyyy');
+}
+
+/**
+ * Every date-only field on an invoice (issue/due/period/service dates) is
+ * read back for display via `date.toISOString().slice(0, 10)` — the UTC
+ * calendar date of the stored instant. Anchoring the write at UTC midnight
+ * (rather than midnight in the org's timezone) is what makes that round trip
+ * lossless: for any positive UTC offset — which covers every Australian
+ * timezone — midnight-local falls on the *previous* UTC calendar day, so
+ * anchoring there would silently shift every invoice date back by one day.
+ */
+export function calendarDateToUtcMidnight(iso: string): Date {
+  return DateTime.fromISO(iso, { zone: 'utc' }).toJSDate();
 }
 
 /** Next number in a worker's own sequence, e.g. INV-0007. */
