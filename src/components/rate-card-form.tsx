@@ -1,5 +1,6 @@
 'use client';
 
+import type { Route } from 'next';
 import { useRouter } from 'next/navigation';
 import { useActionState, useMemo, useState } from 'react';
 import { saveRateCardAction } from '@/lib/actions/rate-card';
@@ -63,7 +64,24 @@ const DIM_LABEL: Record<string, string> = {
   'PUBLIC_HOLIDAY:null': 'Public holiday (all day)',
 };
 
-export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue[]; defaults: Defaults }) {
+export function RateCardForm({
+  rateLines,
+  defaults,
+  mode = 'onboarding',
+  rateCardId,
+  basePath = '/onboarding/rates',
+  submitLabel = 'Continue',
+}: {
+  rateLines: RateLineValue[];
+  defaults: Defaults;
+  /** Which saveRateCardAction path this submits to — see the action's own docs. */
+  mode?: 'onboarding' | 'create' | 'edit';
+  /** Required when mode is 'edit' — which existing rate card to update. */
+  rateCardId?: string;
+  /** Where the "daily rates" checkbox's forced server re-render redirects to. */
+  basePath?: string;
+  submitLabel?: string;
+}) {
   const router = useRouter();
   const [lines, setLines] = useState(rateLines);
   const [meta, setMeta] = useState(defaults);
@@ -100,6 +118,8 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
   return (
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="rateCard" value={payload} readOnly />
+      <input type="hidden" name="mode" value={mode} readOnly />
+      {mode === 'edit' && <input type="hidden" name="rateCardId" value={rateCardId} readOnly />}
 
       <div className="card space-y-3">
         <label className="label" htmlFor="cardName">
@@ -119,7 +139,7 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
             onChange={(e) => {
               const dailyRatesOnly = e.target.checked;
               setMeta((m) => ({ ...m, dailyRatesOnly }));
-              router.push(`/onboarding/rates?daily=${dailyRatesOnly}`);
+              router.push(`${basePath}?daily=${dailyRatesOnly}` as Route);
             }}
           />
           Bill a single rate per day — no morning/evening/night split
@@ -373,7 +393,7 @@ export function RateCardForm({ rateLines, defaults }: { rateLines: RateLineValue
       )}
 
       <button type="submit" className="btn-primary w-full" disabled={pending}>
-        {pending ? 'Saving…' : 'Continue'}
+        {pending ? 'Saving…' : submitLabel}
       </button>
     </form>
   );

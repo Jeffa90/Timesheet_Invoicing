@@ -30,6 +30,8 @@ const WORKER_NAV = [
 // dead ends (both pages redirect to the setup wizard for anyone else).
 const BUSINESS_NAV = [
   { href: '/rates', label: 'Rates' },
+  { href: '/business/rate-cards', label: 'Rate cards' },
+  { href: '/business/team', label: 'Team' },
   { href: '/business/invoices', label: 'Invoices' },
 ] as const;
 

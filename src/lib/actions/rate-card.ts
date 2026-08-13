@@ -49,6 +49,19 @@ export interface RateCardActionState {
   error?: string;
 }
 
+const modeSchema = z.enum(['onboarding', 'create', 'edit']);
+
+/**
+ * Handles three distinct callers with one action, all sharing the same
+ * band/rate-line/sleepover/travel write logic below:
+ *  - 'onboarding' (default, no rateCardId): the setup wizard's original
+ *    behaviour — find-or-create the org's one rate card, then continue to
+ *    the invite step. Untouched so existing onboarding flows keep working.
+ *  - 'create': a business adding another named rate card (e.g. a "Level 2"
+ *    class of worker) alongside ones it already has — always inserts a new
+ *    row, never touches an existing one.
+ *  - 'edit': a business editing one specific existing rate card by id.
+ */
 export async function saveRateCardAction(
   _prev: RateCardActionState,
   formData: FormData,
@@ -56,6 +69,9 @@ export async function saveRateCardAction(
   const user = await requireSessionUser();
   const org = await getPrimaryAdminOrg(user.id);
   if (!org) redirect('/onboarding/business');
+
+  const mode = modeSchema.catch('onboarding').parse(formData.get('mode'));
+  const rateCardId = mode === 'edit' ? String(formData.get('rateCardId') ?? '') : undefined;
 
   let raw: unknown;
   try {
@@ -70,7 +86,16 @@ export async function saveRateCardAction(
   }
   const data = parsed.data;
 
-  const existing = await db.rateCard.findFirst({ where: { orgId: org.id, status: 'ACTIVE' } });
+  const existing =
+    mode === 'edit'
+      ? await db.rateCard.findFirst({ where: { id: rateCardId, orgId: org.id } })
+      : mode === 'onboarding'
+        ? await db.rateCard.findFirst({ where: { orgId: org.id, status: 'ACTIVE' } })
+        : null; // 'create' always inserts a new row, regardless of what already exists
+
+  if (mode === 'edit' && !existing) {
+    return { error: 'That rate card could not be found.' };
+  }
 
   const rateCard = existing
     ? await db.rateCard.update({
@@ -139,6 +164,9 @@ export async function saveRateCardAction(
     create: { rateCardId: rateCard.id, ...data.travel },
   });
 
-  await markOnboardingStepComplete(user.id, org.id, 'rates');
-  redirect('/onboarding/invite');
+  if (mode === 'onboarding') {
+    await markOnboardingStepComplete(user.id, org.id, 'rates');
+    redirect('/onboarding/invite');
+  }
+  redirect('/business/rate-cards');
 }

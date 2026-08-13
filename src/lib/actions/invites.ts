@@ -2,6 +2,7 @@
 
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
+import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { AuthError } from 'next-auth';
@@ -75,6 +76,39 @@ export async function inviteWorkerAction(_prev: InviteActionState, formData: For
     invitedEmail: email,
     inviteUrl: `/invite/${inviteToken}`,
   };
+}
+
+export interface ReassignRateCardState {
+  error?: string;
+}
+
+const reassignSchema = z.object({ engagementId: z.string().min(1), rateCardId: z.string().min(1) });
+
+/** Business side: moves an existing worker onto a different rate card — e.g. a
+ * reclassification or a pay rise. Only affects shifts logged from now on; anything
+ * already priced keeps the rate-card snapshot it was priced against. */
+export async function reassignEngagementRateCardAction(
+  engagementId: string,
+  _prev: ReassignRateCardState,
+  formData: FormData,
+): Promise<ReassignRateCardState> {
+  const user = await requireSessionUser();
+  const org = await getPrimaryAdminOrg(user.id);
+  if (!org) redirect('/onboarding/business');
+
+  const parsed = reassignSchema.safeParse({ engagementId, rateCardId: formData.get('rateCardId') });
+  if (!parsed.success) return { error: 'Choose a rate card.' };
+
+  const [engagement, rateCard] = await Promise.all([
+    db.engagement.findFirst({ where: { id: parsed.data.engagementId, orgId: org.id } }),
+    db.rateCard.findFirst({ where: { id: parsed.data.rateCardId, orgId: org.id } }),
+  ]);
+  if (!engagement) return { error: 'That worker could not be found.' };
+  if (!rateCard) return { error: 'Choose a valid rate card.' };
+
+  await db.engagement.update({ where: { id: engagement.id }, data: { rateCardId: rateCard.id } });
+  revalidatePath('/business/team');
+  return {};
 }
 
 export async function finishInviteStepAction() {

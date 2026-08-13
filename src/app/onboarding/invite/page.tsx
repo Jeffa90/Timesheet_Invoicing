@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
+import { InviteForm } from '@/components/invite-form';
 import { db } from '@/lib/db';
 import { getOnboardingContext } from '@/lib/actions/onboarding-context';
-import { InviteForm } from './form';
 import { FinishButton } from './finish-button';
 
 export default async function InviteStepPage() {
