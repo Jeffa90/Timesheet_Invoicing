@@ -170,3 +170,45 @@ export async function saveRateCardAction(
   }
   redirect('/business/rate-cards');
 }
+
+export interface DeleteRateCardState {
+  error?: string;
+}
+
+/**
+ * Deleting is only safe once nothing depends on this exact row: any worker
+ * still assigned to it (Engagement.rateCardId) would be left pointing at a
+ * card that no longer exists, and any shift ever priced against it
+ * (Shift.rateCardId) needs the row to survive for its history to stay
+ * meaningful, even though the priced result itself is already frozen in
+ * pricingResult. Both are enforced at the database level too (no onDelete:
+ * Cascade on either relation) — the counts here just turn that into a
+ * specific, actionable error instead of a raw constraint failure.
+ */
+export async function deleteRateCardAction(
+  rateCardId: string,
+  _prev: DeleteRateCardState,
+  _formData: FormData,
+): Promise<DeleteRateCardState> {
+  const user = await requireSessionUser();
+  const org = await getPrimaryAdminOrg(user.id);
+  if (!org) redirect('/onboarding/business');
+
+  const rateCard = await db.rateCard.findFirst({
+    where: { id: rateCardId, orgId: org.id },
+    include: { _count: { select: { engagements: true, shifts: true } } },
+  });
+  if (!rateCard) return { error: 'That rate card could not be found.' };
+
+  if (rateCard._count.engagements > 0) {
+    return {
+      error: `${rateCard._count.engagements} worker${rateCard._count.engagements === 1 ? ' is' : 's are'} still assigned to this rate card — reassign them from the Team page first.`,
+    };
+  }
+  if (rateCard._count.shifts > 0) {
+    return { error: 'Shifts have already been logged against this rate card, so it can\'t be deleted.' };
+  }
+
+  await db.rateCard.delete({ where: { id: rateCard.id } });
+  redirect('/business/rate-cards');
+}

@@ -3,6 +3,7 @@ import { RateCardForm } from '@/components/rate-card-form';
 import { db } from '@/lib/db';
 import { buildRateCardFormProps } from '@/lib/rate-card-form-defaults';
 import { getOnboardingState, getPrimaryAdminOrg, isOnboardingComplete, requireSessionUser } from '@/lib/session';
+import { DeleteRateCardButton } from './delete-rate-card-button';
 
 export default async function EditRateCardPage({
   params,
@@ -51,6 +52,10 @@ export default async function EditRateCardPage({
         basePath={`/business/rate-cards/${existingCard.id}`}
         submitLabel="Save changes"
       />
+
+      <div className="card">
+        <DeleteRateCardButton rateCardId={existingCard.id} />
+      </div>
     </div>
   );
 }

@@ -1,12 +1,22 @@
+import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import { auth } from './auth';
 import { db } from './db';
 
-/** The signed-in user's session, or null. Read-only — does not redirect. */
-export async function getSessionUser() {
+/**
+ * The signed-in user's session, or null. Read-only — does not redirect.
+ *
+ * Wrapped in React's cache() because the root layout calls this (to decide
+ * which nav items to show) and then almost every page calls it again via
+ * requireSessionUser() — without memoization that's a repeat DB-touching auth()
+ * call on every single request. cache() scopes the memo to one request/render
+ * pass, so it never leaks between users — see getPrimaryAdminOrg below for the
+ * bigger win from the same pattern.
+ */
+export const getSessionUser = cache(async () => {
   const session = await auth();
   return session?.user ?? null;
-}
+});
 
 /** The signed-in user's session, redirecting to /login if there isn't one. */
 export async function requireSessionUser() {
@@ -20,15 +30,20 @@ export async function requireSessionUser() {
  * most recently created ACTIVE membership with admin rights. A user who owns
  * several businesses is out of scope for this app's first version — the model
  * supports it (Membership is many-to-many), but the UI only surfaces one at a time.
+ *
+ * Wrapped in cache(): the root layout calls this once to decide whether to show
+ * BUSINESS_NAV, and nearly every business/onboarding page calls it again for its
+ * own data — without this, that's a real extra Postgres round trip on almost
+ * every authenticated page load, not a hypothetical one.
  */
-export async function getPrimaryAdminOrg(userId: string) {
+export const getPrimaryAdminOrg = cache(async (userId: string) => {
   const membership = await db.membership.findFirst({
     where: { userId, status: 'ACTIVE', role: { in: ['OWNER', 'ADMIN', 'COORDINATOR'] } },
     orderBy: { invitedAt: 'desc' },
     include: { org: true },
   });
   return membership?.org ?? null;
-}
+});
 
 /**
  * Whether `userId` is an active admin-rights member of `orgId` specifically —
