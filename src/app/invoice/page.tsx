@@ -1,12 +1,14 @@
 import { DateTime } from 'luxon';
 import Link from 'next/link';
+import { OrgSwitcher } from '@/components/org-switcher';
 import { db } from '@/lib/db';
 import { formatCents } from '@/lib/pricing/money';
 import { getWorkerEngagements, requireSessionUser } from '@/lib/session';
 import { GenerateForm } from './generate-form';
 
-export default async function InvoicePage() {
+export default async function InvoicePage({ searchParams }: { searchParams: Promise<{ org?: string }> }) {
   const user = await requireSessionUser();
+  const { org } = await searchParams;
   const engagements = await getWorkerEngagements(user.id);
 
   if (engagements.length === 0) {
@@ -21,8 +23,10 @@ export default async function InvoicePage() {
     );
   }
 
-  const activeOrgId = engagements[0].orgId;
-  const activeOrgName = engagements[0].org.name;
+  const activeEngagement = engagements.find((e) => e.orgId === org) ?? engagements[0];
+  const activeOrgId = activeEngagement.orgId;
+  const activeOrgName = activeEngagement.org.name;
+  const engagementOptions = engagements.map((e) => ({ orgId: e.orgId, orgName: e.org.name }));
 
   const [workerProfile, pendingShifts, pastInvoices] = await Promise.all([
     db.workerProfile.findUnique({ where: { userId: user.id } }),
@@ -37,6 +41,7 @@ export default async function InvoicePage() {
 
   return (
     <div className="space-y-6">
+      <OrgSwitcher engagements={engagementOptions} activeOrgId={activeOrgId} />
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Invoicing</h1>
         <p className="mt-1 text-sm text-ink-soft">For {activeOrgName}.</p>

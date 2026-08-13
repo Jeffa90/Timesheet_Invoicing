@@ -142,6 +142,19 @@ rate-card-level "daily rates only" mode (single rate per day type, no time bands
     built as a section on `/profile`; the user asked for it as its own tab instead, so
     it moved to a dedicated page — `EmployerDetailsCard` now lives under
     `src/app/businesses/`.)
+18. **No business switcher for a worker engaged with more than one business.**
+    `/`, `/shifts` and `/invoice` all silently hardcoded `engagements[0]` — a second
+    business's shifts/invoices were completely invisible in the UI with no way to
+    switch, even though `Engagement` already supports many businesses per worker.
+    New `src/components/org-switcher.tsx` — a plain GET `<form>` with a `<select
+    onChange={... requestSubmit()}>`, so switching is a real navigation to
+    `?org=<id>` (server re-renders with fresh data, no client state to keep in sync)
+    — wired into all three pages, hidden automatically when there's only one
+    business (`loadShiftLoggerProps` already accepted a `preferredOrgId` param from
+    an earlier session, unused until now — the other two pages gained the same
+    `searchParams.org` pattern already used by `/profile?fy=`).
+    Still queued from the same request, not yet built: quick-repeat/template shift
+    logging, duplicating an existing rate card, and bulk-inviting workers.
 
 ## Open items — needs the user's input, not yet resolved
 

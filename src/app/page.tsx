@@ -1,11 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { OrgSwitcher } from '@/components/org-switcher';
 import { loadShiftLoggerProps } from '@/lib/shift-logger-context';
 import { getOnboardingState, getPrimaryAdminOrg, isOnboardingComplete, requireSessionUser } from '@/lib/session';
 import { ShiftLogger } from './shift-logger';
 
-export default async function LogShiftPage() {
+export default async function LogShiftPage({ searchParams }: { searchParams: Promise<{ org?: string }> }) {
   const user = await requireSessionUser();
+  const { org } = await searchParams;
 
   const adminOrg = await getPrimaryAdminOrg(user.id);
   if (adminOrg) {
@@ -13,7 +15,7 @@ export default async function LogShiftPage() {
     if (!isOnboardingComplete(onboarding?.completedSteps ?? [])) redirect('/onboarding');
   }
 
-  const context = await loadShiftLoggerProps(user.id);
+  const context = await loadShiftLoggerProps(user.id, org);
 
   if (context.kind === 'no-engagements') {
     return (
@@ -59,5 +61,10 @@ export default async function LogShiftPage() {
     );
   }
 
-  return <ShiftLogger {...context.props} />;
+  return (
+    <div className="space-y-4">
+      <OrgSwitcher engagements={context.props.engagements} activeOrgId={context.props.activeOrgId} />
+      <ShiftLogger {...context.props} />
+    </div>
+  );
 }

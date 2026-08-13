@@ -1,13 +1,15 @@
 import Link from 'next/link';
 import { DateTime } from 'luxon';
+import { OrgSwitcher } from '@/components/org-switcher';
 import { db } from '@/lib/db';
 import { formatRange } from '@/lib/pricing/time';
 import { formatInvoiceDate } from '@/lib/invoice';
 import { getWorkerEngagements, requireSessionUser } from '@/lib/session';
 import { ShiftsList } from './shifts-list';
 
-export default async function ShiftsPage() {
+export default async function ShiftsPage({ searchParams }: { searchParams: Promise<{ org?: string }> }) {
   const user = await requireSessionUser();
+  const { org } = await searchParams;
   const engagements = await getWorkerEngagements(user.id);
 
   if (engagements.length === 0) {
@@ -21,7 +23,8 @@ export default async function ShiftsPage() {
     );
   }
 
-  const activeEngagement = engagements[0];
+  const activeEngagement = engagements.find((e) => e.orgId === org) ?? engagements[0];
+  const engagementOptions = engagements.map((e) => ({ orgId: e.orgId, orgName: e.org.name }));
   const shifts = await db.shift.findMany({
     where: { orgId: activeEngagement.orgId, userId: user.id },
     include: { serviceType: true },
@@ -30,12 +33,15 @@ export default async function ShiftsPage() {
 
   if (shifts.length === 0) {
     return (
-      <div className="mx-auto max-w-lg text-center">
-        <h1 className="text-2xl font-bold tracking-tight">No shifts logged yet</h1>
-        <p className="mt-3 text-sm text-ink-soft">Shifts you log for {activeEngagement.org.name} will show up here.</p>
-        <Link href="/" className="btn-primary mt-4 inline-flex">
-          Log a shift
-        </Link>
+      <div className="mx-auto max-w-lg space-y-4">
+        <OrgSwitcher engagements={engagementOptions} activeOrgId={activeEngagement.orgId} />
+        <div className="text-center">
+          <h1 className="text-2xl font-bold tracking-tight">No shifts logged yet</h1>
+          <p className="mt-3 text-sm text-ink-soft">Shifts you log for {activeEngagement.org.name} will show up here.</p>
+          <Link href="/" className="btn-primary mt-4 inline-flex">
+            Log a shift
+          </Link>
+        </div>
       </div>
     );
   }
@@ -56,6 +62,7 @@ export default async function ShiftsPage() {
 
   return (
     <div className="space-y-4">
+      <OrgSwitcher engagements={engagementOptions} activeOrgId={activeEngagement.orgId} />
       <div>
         <h1 className="text-2xl font-bold tracking-tight">My shifts</h1>
         <p className="mt-1 text-sm text-ink-soft">
