@@ -52,11 +52,13 @@ export async function generateInvoiceAction(
   }
   const selectedShiftIds = formData.getAll('shiftIds').map(String).filter(Boolean);
 
-  const [org, workerProfile, allPendingShifts] = await Promise.all([
+  const [org, workerProfile, allPendingShifts, serviceTypes] = await Promise.all([
     db.organisation.findUnique({ where: { id: orgId } }),
     db.workerProfile.findUnique({ where: { userId: user.id } }),
     db.shift.findMany({ where: { orgId, userId: user.id, status: 'SUBMITTED' }, orderBy: { startUtc: 'asc' } }),
+    db.serviceType.findMany({ where: { orgId } }),
   ]);
+  const serviceTypeNameById = Object.fromEntries(serviceTypes.map((s) => [s.id, s.name]));
 
   if (!org) return { error: 'That business could not be found.' };
   if (!workerProfile) return { error: 'Add your invoice details first.' };
@@ -83,6 +85,7 @@ export async function generateInvoiceAction(
     date: DateTime.fromJSDate(shift.startUtc).setZone(shift.timezone).toFormat('yyyy-MM-dd'),
     result: shift.pricingResult as unknown as PricingResult,
     shiftId: shift.id,
+    serviceTypeName: serviceTypeNameById[shift.serviceTypeId],
   }));
 
   const number = nextInvoiceNumber(workerProfile.invoicePrefix, workerProfile.nextInvoiceNumber);

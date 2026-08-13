@@ -63,6 +63,15 @@ export interface PricedShift {
   date: string;
   result: PricingResult;
   shiftId?: string;
+  /**
+   * Prefixed onto every line this shift produces. The pricing engine's own
+   * line descriptions are day-type and time only (e.g. "Weekday — 9am to
+   * 12:30pm") since the engine never sees service type names, only opaque
+   * ids for rate lookups — on a business with more than one service (e.g.
+   * Personal Care and Admin Hours), lines from different services would
+   * otherwise be indistinguishable on the invoice itself.
+   */
+  serviceTypeName?: string;
 }
 
 export interface BuildInvoiceOptions {
@@ -90,7 +99,7 @@ export function buildInvoice(options: BuildInvoiceOptions): InvoiceDoc {
   const lines: InvoiceDocLine[] = shifts
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date))
-    .flatMap((shift) => shift.result.lines.map((line) => toDocLine(shift.date, line, shift.shiftId)));
+    .flatMap((shift) => shift.result.lines.map((line) => toDocLine(shift.date, line, shift.serviceTypeName, shift.shiftId)));
 
   const subtotalCents = lines.reduce((sum, l) => sum + l.amountCents, 0);
   const gstCents = lines.reduce((sum, l) => sum + l.gstCents, 0);
@@ -117,10 +126,10 @@ export function buildInvoice(options: BuildInvoiceOptions): InvoiceDoc {
   };
 }
 
-function toDocLine(date: string, line: PricedLine, shiftId?: string): InvoiceDocLine {
+function toDocLine(date: string, line: PricedLine, serviceTypeName: string | undefined, shiftId?: string): InvoiceDocLine {
   return {
     serviceDate: date,
-    description: line.description,
+    description: serviceTypeName ? `${serviceTypeName}: ${line.description}` : line.description,
     ndisLineItemCode: line.ndisLineItemCode,
     quantity: line.quantity,
     unit: line.unit,
