@@ -134,11 +134,14 @@ rate-card-level "daily rates only" mode (single rate per day type, no time bands
     mode instead of into the wizard.
 17. **Worker had no way to see their employer's current details** to check them
     against a generated invoice — added directly in response to the user reporting
-    invoice business info looked stale. New read-only "The business(es) you invoice"
-    section on `/profile` (`src/app/profile/employer-details-card.tsx`), sourced from
-    `getWorkerEngagements()`, showing each engaged business's name/legal name/ABN/GST
-    status/address/email/phone exactly as currently stored — with copy explaining the
-    frozen-snapshot behavior so a mismatch against an old invoice isn't read as a bug.
+    invoice business info looked stale. New **"My Businesses"** tab (`/businesses`,
+    `src/app/businesses/`), sourced from `getWorkerEngagements()`, listing every
+    business the worker is engaged with — name/legal name/ABN/GST status/address/
+    email/phone exactly as currently stored — with copy explaining the frozen-snapshot
+    behavior so a mismatch against an old invoice isn't read as a bug. (Originally
+    built as a section on `/profile`; the user asked for it as its own tab instead, so
+    it moved to a dedicated page — `EmployerDetailsCard` now lives under
+    `src/app/businesses/`.)
 
 ## Open items — needs the user's input, not yet resolved
 

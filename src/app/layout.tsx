@@ -25,6 +25,7 @@ const WORKER_NAV = [
   { href: '/', label: 'Log a shift' },
   { href: '/shifts', label: 'My Shifts' },
   { href: '/invoice', label: 'My Invoices' },
+  { href: '/businesses', label: 'My Businesses' },
   { href: '/profile', label: 'Profile' },
 ] as const;
 
