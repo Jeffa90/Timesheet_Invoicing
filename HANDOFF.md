@@ -117,6 +117,28 @@ rate-card-level "daily rates only" mode (single rate per day type, no time bands
     it, symmetric to how `BUSINESS_NAV` is gated on `adminOrg`. This was the first
     concrete evidence for open item 4 below (portal separation) — worth reading that
     item's update.
+16. **No post-onboarding way to edit business details, and email/phone were never
+    settable anywhere.** This is very likely the real cause of open item 1 below.
+    `saveOrganisationAction` unconditionally `redirect('/onboarding/services')`ed
+    after saving — fine mid-wizard, but the *only* way to edit business details after
+    setup was to manually hit the `/onboarding/business` URL, and saving there bounced
+    you into the services step of the wizard again, which reads as broken/confusing.
+    Worse: `Organisation.email`/`Organisation.phone` exist in the schema and are read
+    by `generateInvoiceAction` for the invoice's "to" block, but no form anywhere —
+    onboarding or otherwise — ever had fields for them, so they were silently `null`
+    on every invoice for every business, forever. Fixed: `BusinessForm` moved to
+    `src/components/`, generalized with the same `mode: 'onboarding' | 'manage'`
+    pattern as the other forms, and gained email/phone fields; new
+    `/business/details` management page (added to `BUSINESS_NAV` as "Details");
+    `saveOrganisationAction` now redirects back to `/business/details` in `manage`
+    mode instead of into the wizard.
+17. **Worker had no way to see their employer's current details** to check them
+    against a generated invoice — added directly in response to the user reporting
+    invoice business info looked stale. New read-only "The business(es) you invoice"
+    section on `/profile` (`src/app/profile/employer-details-card.tsx`), sourced from
+    `getWorkerEngagements()`, showing each engaged business's name/legal name/ABN/GST
+    status/address/email/phone exactly as currently stored — with copy explaining the
+    frozen-snapshot behavior so a mismatch against an old invoice isn't read as a bug.
 
 ## Open items — needs the user's input, not yet resolved
 
@@ -125,6 +147,15 @@ rate-card-level "daily rates only" mode (single rate per day type, no time bands
    Also worth remembering: invoices are frozen at generation time, so if they edited
    business/worker details *after* generating a given invoice, that invoice won't
    reflect the edit — they'd need to delete and regenerate it (deletion is supported).
+   **Update**: the user then said they'd updated the business profile *before* logging
+   the shifts, so the frozen-snapshot explanation alone doesn't fit — and a real bug
+   was found (see bugs-fixed item 16): there was no working way to edit business
+   details after onboarding at all, so the "update" may well not have actually landed
+   in the database, or landed against a `legalName` field the user didn't realize
+   overrides the invoice masthead name over `name`. Both are fixed now (a working
+   `/business/details` page, and the worker-facing comparison view from item 17) —
+   next step is to have the user redo the edit and generate a fresh invoice to confirm
+   it's resolved, rather than assuming it is.
 2. **Bank details missing from a specific invoice** — very likely just means that
    worker's profile didn't have bank details saved *at the time that invoice was
    generated* (the payment section is correctly gated on `bankDetails` being present,

@@ -31,6 +31,7 @@ const WORKER_NAV = [
 // Only shown to someone who actually runs a business — otherwise these are
 // dead ends (both pages redirect to the setup wizard for anyone else).
 const BUSINESS_NAV = [
+  { href: '/business/details', label: 'Details' },
   { href: '/business/services', label: 'Services' },
   { href: '/rates', label: 'Rates' },
   { href: '/business/rate-cards', label: 'Rate cards' },

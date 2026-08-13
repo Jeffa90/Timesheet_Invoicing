@@ -1,13 +1,17 @@
 import { db } from '@/lib/db';
 import { AU_STATES } from '@/lib/pricing/defaults';
-import { requireSessionUser } from '@/lib/session';
+import { getWorkerEngagements, requireSessionUser } from '@/lib/session';
+import { EmployerDetailsCard } from './employer-details-card';
 import { ProfileForm } from './profile-form';
 import { TaxEstimateCard } from './tax-estimate-card';
 
 export default async function ProfilePage({ searchParams }: { searchParams: Promise<{ fy?: string }> }) {
   const user = await requireSessionUser();
   const { fy } = await searchParams;
-  const profile = await db.workerProfile.findUnique({ where: { userId: user.id } });
+  const [profile, engagements] = await Promise.all([
+    db.workerProfile.findUnique({ where: { userId: user.id } }),
+    getWorkerEngagements(user.id),
+  ]);
 
   return (
     <div className="mx-auto max-w-lg space-y-4">
@@ -46,6 +50,25 @@ export default async function ProfilePage({ searchParams }: { searchParams: Prom
           state={profile.state}
           viewingPrevious={fy === 'previous'}
         />
+      )}
+
+      {engagements.length > 0 && (
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">
+            {engagements.length === 1 ? 'The business you invoice' : 'The businesses you invoice'}
+          </h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            What each business currently has on file — this is what a new invoice to them would use
+            today. If this looks wrong, ask them to update it on their end; you can&apos;t edit it
+            here. Note it won&apos;t match an invoice you&apos;ve already generated if they changed
+            something afterward — each invoice keeps whatever was true on the day it was issued.
+          </p>
+          <div className="mt-3 space-y-3">
+            {engagements.map((e) => (
+              <EmployerDetailsCard key={e.id} org={e.org} />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

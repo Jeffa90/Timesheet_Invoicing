@@ -1,6 +1,6 @@
 import { getOnboardingContext } from '@/lib/actions/onboarding-context';
+import { BusinessForm } from '@/components/business-form';
 import { AU_STATES } from '@/lib/pricing/defaults';
-import { BusinessForm } from './form';
 
 export default async function BusinessStepPage() {
   const { org } = await getOnboardingContext();
@@ -28,6 +28,8 @@ export default async function BusinessStepPage() {
                 suburb: org.suburb ?? '',
                 state: org.state ?? 'NSW',
                 postcode: org.postcode ?? '',
+                email: org.email ?? '',
+                phone: org.phone ?? '',
                 invoiceTermsDays: org.invoiceTermsDays,
               }
             : null

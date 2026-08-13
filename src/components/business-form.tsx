@@ -12,10 +12,23 @@ interface Defaults {
   suburb: string;
   state: string;
   postcode: string;
+  email: string;
+  phone: string;
   invoiceTermsDays: number;
 }
 
-export function BusinessForm({ states, defaults }: { states: readonly string[]; defaults: Defaults | null }) {
+export function BusinessForm({
+  states,
+  defaults,
+  mode = 'onboarding',
+  submitLabel = 'Continue',
+}: {
+  states: readonly string[];
+  defaults: Defaults | null;
+  /** Which saveOrganisationAction path this submits to — see the action's own docs. */
+  mode?: 'onboarding' | 'manage';
+  submitLabel?: string;
+}) {
   const [state, formAction, pending] = useActionState(saveOrganisationAction, {});
   const d = defaults ?? {
     name: '',
@@ -26,11 +39,15 @@ export function BusinessForm({ states, defaults }: { states: readonly string[]; 
     suburb: '',
     state: 'NSW',
     postcode: '',
+    email: '',
+    phone: '',
     invoiceTermsDays: 14,
   };
 
   return (
     <form action={formAction} className="card space-y-4">
+      <input type="hidden" name="mode" value={mode} />
+
       <div>
         <label className="label" htmlFor="name">
           Business name
@@ -94,6 +111,22 @@ export function BusinessForm({ states, defaults }: { states: readonly string[]; 
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="label" htmlFor="email">
+            Email
+          </label>
+          <input id="email" name="email" type="email" defaultValue={d.email} className="field" />
+        </div>
+        <div>
+          <label className="label" htmlFor="phone">
+            Phone
+          </label>
+          <input id="phone" name="phone" type="tel" defaultValue={d.phone} className="field" />
+        </div>
+      </div>
+      <p className="-mt-2 text-xs text-ink-soft">Shown to workers on the invoices they send you.</p>
+
       <div>
         <label className="label" htmlFor="invoiceTermsDays">
           Default invoice payment terms (days)
@@ -116,7 +149,7 @@ export function BusinessForm({ states, defaults }: { states: readonly string[]; 
       )}
 
       <button type="submit" className="btn-primary w-full" disabled={pending}>
-        {pending ? 'Saving…' : 'Continue'}
+        {pending ? 'Saving…' : submitLabel}
       </button>
     </form>
   );
