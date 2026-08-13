@@ -41,6 +41,7 @@ function priced(gst: boolean): PricingResult {
     endUtc: '2025-07-16T04:00:00Z', // 2pm Sydney
     timezone: TZ,
     serviceTypeId: SERVICE,
+    workerGstRegistered: true,
   };
   return priceShift(shift, card(gst));
 }
@@ -104,6 +105,53 @@ describe('buildInvoice', () => {
       '2025-07-16',
       '2025-07-18',
     ]);
+  });
+
+  it('uses an explicit period override instead of the shift date range', () => {
+    const invoice = buildInvoice({
+      shifts: [{ date: '2025-07-16', result: priced(false) }],
+      from,
+      to,
+      number: 'INV-0004',
+      issueDate: '2025-07-20',
+      termsDays: 7,
+      timezone: TZ,
+      periodStart: '2025-07-01',
+      periodEnd: '2025-07-14',
+    });
+
+    expect(invoice.periodStart).toBe('2025-07-01');
+    expect(invoice.periodEnd).toBe('2025-07-14');
+  });
+
+  it('prefixes each line with its service type name when given one', () => {
+    const invoice = buildInvoice({
+      shifts: [{ date: '2025-07-16', result: priced(false), serviceTypeName: 'Personal Care' }],
+      from,
+      to,
+      number: 'INV-0005',
+      issueDate: '2025-07-20',
+      termsDays: 7,
+      timezone: TZ,
+    });
+
+    expect(invoice.lines[0].description.startsWith('Personal Care: ')).toBe(true);
+  });
+
+  it('leaves the description alone when no service type name is given', () => {
+    const invoice = buildInvoice({
+      shifts: [{ date: '2025-07-16', result: priced(false) }],
+      from,
+      to,
+      number: 'INV-0006',
+      issueDate: '2025-07-20',
+      termsDays: 7,
+      timezone: TZ,
+    });
+
+    // Times like "10:00am" contain a colon too — the prefix specifically adds
+    // "Name: " (colon-space), which is what distinguishes it from that.
+    expect(invoice.lines[0].description.includes(': ')).toBe(false);
   });
 });
 

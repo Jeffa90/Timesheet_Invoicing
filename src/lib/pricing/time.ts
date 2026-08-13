@@ -222,3 +222,22 @@ export function formatLocal(dt: DateTime): string {
 export function formatLocalTime(dt: DateTime): string {
   return dt.toFormat('h:mma').replace('AM', 'am').replace('PM', 'pm');
 }
+
+/**
+ * "10:00pm to 7:30am" — with the end date appended when the range genuinely
+ * spans two calendar days, so an overnight line isn't ambiguous about which
+ * morning it ends on.
+ *
+ * A segment ending exactly at local midnight is treated as belonging to the
+ * day that's ending, not the one starting: segmentInterval cuts at every
+ * local midnight unconditionally, so most ordinary multi-band or
+ * multi-day-type shifts produce a segment ending at 00:00 — without this
+ * adjustment, those would get a spurious trailing date appended.
+ */
+export function formatRange(start: DateTime, end: DateTime): string {
+  const startStr = formatLocalTime(start);
+  const isMidnight = end.hour === 0 && end.minute === 0 && end.second === 0;
+  const endDate = isMidnight ? end.minus({ minutes: 1 }).toISODate() : end.toISODate();
+  const endStr = start.toISODate() === endDate ? formatLocalTime(end) : `${formatLocalTime(end)} ${end.toFormat('d LLL')}`;
+  return `${startStr} to ${endStr}`;
+}

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postinstall": "prisma generate",
+    "vercel-build": "prisma migrate deploy && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
@@ -22,15 +24,19 @@
   },
   "dependencies": {
     "@prisma/client": "^6.1.0",
+    "@react-pdf/renderer": "^4.6.0",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "luxon": "^3.5.0",
     "next": "^15.1.0",
+    "next-auth": "^5.0.0-beta.32",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwind-merge": "^2.6.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
     "@types/luxon": "^3.4.2",
     "@types/node": "^22.10.0",
     "@types/react": "^19.0.0",

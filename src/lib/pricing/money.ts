@@ -39,6 +39,18 @@ export function formatCents(cents: Cents): string {
   return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
 
+/**
+ * Same as formatCents, but with thousands separators — for larger aggregate
+ * figures (a year-to-date total) where "$52341.87" is harder to scan than
+ * "$52,341.87". Individual line items stay on formatCents.
+ */
+export function formatCentsWithSeparators(cents: Cents): string {
+  const sign = cents < 0 ? '-' : '';
+  const abs = Math.abs(cents);
+  const dollars = Math.floor(abs / 100).toLocaleString('en-AU');
+  return `${sign}$${dollars}.${String(abs % 100).padStart(2, '0')}`;
+}
+
 /** Hours to a human string: 2 -> "2h", 2.5 -> "2h 30m", 0.25 -> "15m". */
 export function formatHours(hours: number): string {
   const totalMinutes = roundHalfUp(hours * 60);

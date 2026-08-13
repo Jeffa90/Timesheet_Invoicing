@@ -7,6 +7,7 @@ import {
   dayTypeFor,
   formatLocal,
   formatLocalTime,
+  formatRange,
   holidaySet,
   intersectIntervals,
   mergeIntervals,
@@ -110,6 +111,11 @@ export function priceShift(
   segments = applyClassificationStrategy(segments, card, trace);
 
   // -------------------------------------------------------- hourly line items
+  // A rate card with only one band (a "daily rate" card, see DEFAULT_DAILY_TIME_BAND)
+  // has no real time-of-day distinction to describe — every segment's bandKey is
+  // just whatever key that single band happens to use, not a meaningful "daytime"
+  // vs "evening" split, so it's left out of anything shown to a worker or business.
+  const showBand = card.bands.length > 1;
   let billableMinutes = 0;
   for (const segment of segments) {
     const rounded = roundMinutes(segment.minutes, card.rounding.minuteIncrement, card.rounding.mode);
@@ -118,11 +124,12 @@ export function priceShift(
 
     const { rateCents, def } = resolveRate(card, shift.serviceTypeId, segment.dayType, segment.bandKey, warnings);
     const amountCents = amountForMinutes(rounded, rateCents);
-    const gstApplicable = isGstApplicable(card, shift.serviceTypeId);
+    const gstApplicable = isGstApplicable(shift, card);
+    const bandLabel = showBand ? ` ${describeBand(segment.bandKey)}` : '';
 
     lines.push({
       kind: 'HOURLY',
-      description: `${describeDayType(segment.dayType)} ${describeBand(segment.bandKey)} — ${formatLocalTime(segment.start)} to ${formatLocalTime(segment.end)}`,
+      description: `${describeDayType(segment.dayType)}${bandLabel} — ${formatRange(segment.start, segment.end)}`,
       startLocal: segment.start.toISO() ?? undefined,
       endLocal: segment.end.toISO() ?? undefined,
       dayType: segment.dayType,
@@ -138,7 +145,7 @@ export function priceShift(
 
     trace.push(
       `${formatLocal(segment.start)}–${formatLocalTime(segment.end)}: ` +
-        `${describeDayType(segment.dayType)} ${describeBand(segment.bandKey)}, ` +
+        `${describeDayType(segment.dayType)}${bandLabel}, ` +
         `${formatHours(rounded / 60)} × ${formatCents(rateCents)}/h = ${formatCents(amountCents)}`,
     );
   }
@@ -146,10 +153,10 @@ export function priceShift(
   // ------------------------------------------------------------ sleepover fee
   if (sleepoverWindow && card.sleepover.enabled) {
     const feeCents = resolveSleepoverFee(card, warnings);
-    const gstApplicable = card.sleepover.gstApplicable;
+    const gstApplicable = shift.workerGstRegistered && card.sleepover.gstApplicable;
     lines.push({
       kind: 'SLEEPOVER',
-      description: `Night-time sleepover — ${formatLocalTime(sleepoverWindow.start)} to ${formatLocalTime(sleepoverWindow.end)}`,
+      description: `Night-time sleepover — ${formatRange(sleepoverWindow.start, sleepoverWindow.end)}`,
       startLocal: sleepoverWindow.start.toISO() ?? undefined,
       endLocal: sleepoverWindow.end.toISO() ?? undefined,
       quantity: 1,
@@ -176,7 +183,7 @@ export function priceShift(
     const first = segments[0];
     const { rateCents } = resolveRate(card, shift.serviceTypeId, first.dayType, first.bandKey, warnings);
     const amountCents = amountForMinutes(shortfall, rateCents);
-    const gstApplicable = isGstApplicable(card, shift.serviceTypeId);
+    const gstApplicable = isGstApplicable(shift, card);
     lines.push({
       kind: 'MINIMUM_TOPUP',
       description: `Minimum engagement top-up to ${formatHours(card.minimumEngagementMinutes / 60)}`,
@@ -201,6 +208,7 @@ export function priceShift(
 
   // ---------------------------------------------------------------- expenses
   for (const expense of shift.expenses ?? []) {
+    const gstApplicable = shift.workerGstRegistered && expense.gstApplicable;
     lines.push({
       kind: 'EXPENSE',
       description: expense.description,
@@ -208,8 +216,8 @@ export function priceShift(
       unit: 'EACH',
       unitRateCents: expense.amountCents,
       amountCents: expense.amountCents,
-      gstCents: gstFor(expense.amountCents, expense.gstApplicable),
-      gstApplicable: expense.gstApplicable,
+      gstCents: gstFor(expense.amountCents, gstApplicable),
+      gstApplicable,
     });
   }
 
@@ -378,11 +386,11 @@ function priceActiveSupport(
 
       const { rateCents, def } = resolveRate(card, shift.serviceTypeId, effectiveDayType, segment.bandKey, warnings);
       const amountCents = amountForMinutes(rounded, rateCents);
-      const gstApplicable = isGstApplicable(card, shift.serviceTypeId);
+      const gstApplicable = isGstApplicable(shift, card);
 
       lines.push({
         kind: 'ACTIVE_SUPPORT',
-        description: `Active support during sleepover — ${formatLocalTime(segment.start)} to ${formatLocalTime(segment.end)}`,
+        description: `Active support during sleepover — ${formatRange(segment.start, segment.end)}`,
         startLocal: segment.start.toISO() ?? undefined,
         endLocal: segment.end.toISO() ?? undefined,
         dayType: effectiveDayType,
@@ -432,6 +440,7 @@ function priceTravel(
 ): PricedLine[] {
   const lines: PricedLine[] = [];
   const { travel } = card;
+  const travelGstApplicable = shift.workerGstRegistered && travel.gstApplicable;
 
   if (shift.travelKm && shift.travelKm > 0 && travel.perKmCents > 0) {
     let km = shift.travelKm;
@@ -450,8 +459,8 @@ function priceTravel(
       unit: 'KM',
       unitRateCents: travel.perKmCents,
       amountCents,
-      gstCents: gstFor(amountCents, travel.gstApplicable),
-      gstApplicable: travel.gstApplicable,
+      gstCents: gstFor(amountCents, travelGstApplicable),
+      gstApplicable: travelGstApplicable,
     });
     trace.push(`Travel ${km}km × ${formatCents(travel.perKmCents)}/km = ${formatCents(amountCents)}`);
   }
@@ -477,8 +486,8 @@ function priceTravel(
       unit: 'HOUR',
       unitRateCents: rateCents,
       amountCents,
-      gstCents: gstFor(amountCents, travel.gstApplicable),
-      gstApplicable: travel.gstApplicable,
+      gstCents: gstFor(amountCents, travelGstApplicable),
+      gstApplicable: travelGstApplicable,
     });
     trace.push(
       `Travel time ${formatHours(shift.travelMinutes / 60)} × ${formatCents(rateCents)}/h = ${formatCents(amountCents)}`,
@@ -488,8 +497,12 @@ function priceTravel(
   return lines;
 }
 
-function isGstApplicable(card: RateCardSnapshot, serviceTypeId: string): boolean {
-  return card.serviceTypeGst[serviceTypeId] ?? false;
+/**
+ * Only a GST-registered worker may legally charge GST — this gate applies on top
+ * of whatever the business has marked taxable, never instead of it.
+ */
+function isGstApplicable(shift: ShiftInput, card: RateCardSnapshot): boolean {
+  return shift.workerGstRegistered && (card.serviceTypeGst[shift.serviceTypeId] ?? false);
 }
 
 function describeDayType(dayType: DayType): string {
