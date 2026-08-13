@@ -7,7 +7,7 @@ import { signInAction } from '@/lib/actions/auth';
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(signInAction, {});
-  const redirectTo = useSearchParams().get('redirectTo') ?? '/onboarding';
+  const redirectTo = useSearchParams().get('redirectTo') ?? '/';
 
   return (
     <div className="mx-auto max-w-sm">
