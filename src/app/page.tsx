@@ -1,8 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { db } from '@/lib/db';
-import { toRateCardSnapshot } from '@/lib/rate-card-mapper';
-import { getOnboardingState, getPrimaryAdminOrg, getWorkerEngagements, isOnboardingComplete, requireSessionUser } from '@/lib/session';
+import { loadShiftLoggerProps } from '@/lib/shift-logger-context';
+import { getOnboardingState, getPrimaryAdminOrg, isOnboardingComplete, requireSessionUser } from '@/lib/session';
 import { ShiftLogger } from './shift-logger';
 
 export default async function LogShiftPage() {
@@ -14,9 +13,9 @@ export default async function LogShiftPage() {
     if (!isOnboardingComplete(onboarding?.completedSteps ?? [])) redirect('/onboarding');
   }
 
-  const engagements = await getWorkerEngagements(user.id);
+  const context = await loadShiftLoggerProps(user.id);
 
-  if (engagements.length === 0) {
+  if (context.kind === 'no-engagements') {
     return (
       <div className="mx-auto max-w-lg text-center">
         <h1 className="text-2xl font-bold tracking-tight">No active shifts to log yet</h1>
@@ -45,15 +44,7 @@ export default async function LogShiftPage() {
     );
   }
 
-  const activeEngagement = engagements[0];
-  const [workerProfile, serviceTypes, allServiceTypes, holidays] = await Promise.all([
-    db.workerProfile.findUnique({ where: { userId: user.id } }),
-    db.serviceType.findMany({ where: { orgId: activeEngagement.orgId, active: true }, orderBy: { name: 'asc' } }),
-    db.serviceType.findMany({ where: { orgId: activeEngagement.orgId } }),
-    db.publicHoliday.findMany({ where: { state: activeEngagement.org.state ?? undefined } }),
-  ]);
-
-  if (!workerProfile) {
+  if (context.kind === 'no-profile') {
     return (
       <div className="mx-auto max-w-lg text-center">
         <h1 className="text-2xl font-bold tracking-tight">Set up your profile first</h1>
@@ -68,17 +59,5 @@ export default async function LogShiftPage() {
     );
   }
 
-  const serviceTypeGst = Object.fromEntries(allServiceTypes.map((s) => [s.id, s.gstApplicable]));
-
-  return (
-    <ShiftLogger
-      engagements={engagements.map((e) => ({ orgId: e.orgId, orgName: e.org.name, timezone: e.org.timezone }))}
-      activeOrgId={activeEngagement.orgId}
-      timezone={activeEngagement.org.timezone}
-      serviceTypes={serviceTypes.map((s) => ({ id: s.id, name: s.name, flatRate: s.flatRate }))}
-      rateCard={toRateCardSnapshot(activeEngagement.rateCard, serviceTypeGst)}
-      holidays={holidays.map((h) => ({ date: h.date.toISOString().slice(0, 10), name: h.name }))}
-      gstRegistered={workerProfile.gstRegistered}
-    />
-  );
+  return <ShiftLogger {...context.props} />;
 }

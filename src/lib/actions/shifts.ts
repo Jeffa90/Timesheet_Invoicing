@@ -1,5 +1,7 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { priceShift } from '@/lib/pricing/engine';
@@ -73,6 +75,15 @@ export async function saveShiftAction(_prev: SaveShiftState, formData: FormData)
   }
   const data = parsed.data;
 
+  // Present only when editing an existing shift rather than logging a new one —
+  // see the tail of this function for the update-vs-create branch.
+  const shiftId = String(formData.get('shiftId') ?? '') || undefined;
+  if (shiftId) {
+    const existing = await db.shift.findUnique({ where: { id: shiftId } });
+    if (!existing || existing.userId !== user.id) return { error: 'That shift could not be found.' };
+    if (existing.status !== 'SUBMITTED') return { error: 'Only shifts that have not been invoiced yet can be edited.' };
+  }
+
   const engagement = await db.engagement.findUnique({
     where: { orgId_userId: { orgId: data.orgId, userId: user.id } },
     include: {
@@ -119,25 +130,46 @@ export async function saveShiftAction(_prev: SaveShiftState, formData: FormData)
     const shiftInput = buildShiftInput(formValues, engagement.org.timezone, serviceType.id, workerProfile.gstRegistered);
     const result = priceShift(shiftInput, snapshot, holidays.map((h) => ({ date: h.date.toISOString().slice(0, 10), name: h.name })));
 
+    const priced = {
+      orgId: engagement.orgId,
+      serviceTypeId: serviceType.id,
+      startUtc: new Date(shiftInput.startUtc),
+      endUtc: new Date(shiftInput.endUtc),
+      timezone: engagement.org.timezone,
+      travelKm: shiftInput.travelKm,
+      status: 'SUBMITTED' as const,
+      rateCardId: engagement.rateCardId,
+      rateCardVersion: engagement.rateCard.version,
+      pricingResult: JSON.parse(JSON.stringify(result)),
+      subtotalCents: result.subtotalCents,
+      gstCents: result.gstCents,
+      totalCents: result.totalCents,
+    };
+
+    if (shiftId) {
+      // Prisma update leaves a field untouched when it's undefined — unlike
+      // create, clearing an optional field (e.g. removing the sleepover on
+      // this edit) needs an explicit null, not undefined, or the stale JSON
+      // from before the edit would silently survive.
+      await db.shift.update({
+        where: { id: shiftId },
+        data: {
+          ...priced,
+          breaks: shiftInput.breaks ? JSON.parse(JSON.stringify(shiftInput.breaks)) : null,
+          sleepover: shiftInput.sleepover ? JSON.parse(JSON.stringify(shiftInput.sleepover)) : null,
+          expenses: shiftInput.expenses ? JSON.parse(JSON.stringify(shiftInput.expenses)) : null,
+        },
+      });
+      redirect('/shifts');
+    }
+
     const shift = await db.shift.create({
       data: {
-        orgId: engagement.orgId,
         userId: user.id,
-        serviceTypeId: serviceType.id,
-        startUtc: new Date(shiftInput.startUtc),
-        endUtc: new Date(shiftInput.endUtc),
-        timezone: engagement.org.timezone,
+        ...priced,
         breaks: shiftInput.breaks ? JSON.parse(JSON.stringify(shiftInput.breaks)) : undefined,
         sleepover: shiftInput.sleepover ? JSON.parse(JSON.stringify(shiftInput.sleepover)) : undefined,
-        travelKm: shiftInput.travelKm,
         expenses: shiftInput.expenses ? JSON.parse(JSON.stringify(shiftInput.expenses)) : undefined,
-        status: 'SUBMITTED',
-        rateCardId: engagement.rateCardId,
-        rateCardVersion: engagement.rateCard.version,
-        pricingResult: JSON.parse(JSON.stringify(result)),
-        subtotalCents: result.subtotalCents,
-        gstCents: result.gstCents,
-        totalCents: result.totalCents,
       },
     });
 
@@ -146,4 +178,20 @@ export async function saveShiftAction(_prev: SaveShiftState, formData: FormData)
     if (error instanceof ShiftFormError || error instanceof PricingError) return { error: error.message };
     throw error;
   }
+}
+
+/**
+ * Deletes a logged shift the worker hasn't invoiced yet. Once a shift is
+ * INVOICED it's part of a real financial document and can't be deleted
+ * directly — the invoice itself would need deleting first (which un-invoices
+ * its shifts back to SUBMITTED), keeping there always being exactly one way
+ * a shift's status can change.
+ */
+export async function deleteShiftAction(shiftId: string) {
+  const user = await requireSessionUser();
+  const shift = await db.shift.findUnique({ where: { id: shiftId } });
+  if (!shift || shift.userId !== user.id || shift.status !== 'SUBMITTED') return;
+
+  await db.shift.delete({ where: { id: shiftId } });
+  revalidatePath('/shifts');
 }

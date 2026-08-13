@@ -36,6 +36,7 @@ export function ShiftLogger({
   rateCard,
   holidays,
   gstRegistered,
+  editingShift,
 }: {
   engagements: EngagementOption[];
   activeOrgId: string;
@@ -44,9 +45,11 @@ export function ShiftLogger({
   rateCard: RateCardSnapshot;
   holidays: PublicHolidayDef[];
   gstRegistered: boolean;
+  /** Present only on the edit page — pre-fills the form from an existing shift instead of starting blank. */
+  editingShift?: { id: string; initialForm: ShiftFormValues; initialServiceTypeId: string };
 }) {
-  const [form, setForm] = useState<ShiftFormValues>(EMPTY_FORM);
-  const [serviceTypeId, setServiceTypeId] = useState(serviceTypes[0]?.id ?? '');
+  const [form, setForm] = useState<ShiftFormValues>(editingShift?.initialForm ?? EMPTY_FORM);
+  const [serviceTypeId, setServiceTypeId] = useState(editingShift?.initialServiceTypeId ?? serviceTypes[0]?.id ?? '');
   // Remounts the save form after a successful save — useActionState's state only
   // ever changes via another submission, so without this the success message
   // (and the now-hidden submit button) would be stuck forever.
@@ -95,7 +98,7 @@ export function ShiftLogger({
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
       <div className="space-y-5">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Log a shift</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{editingShift ? 'Edit shift' : 'Log a shift'}</h1>
           <p className="mt-1 text-sm text-ink-soft">
             For {engagements.find((e) => e.orgId === activeOrgId)?.orgName}. Overnight rates, the
             sleepover fee and weekend loadings are worked out for you.
@@ -403,7 +406,9 @@ export function ShiftLogger({
         result={result}
         error={error}
         onLogAnother={logAnotherShift}
+        submitLabel={editingShift ? 'Save changes' : 'Save shift'}
         hiddenFields={{
+          ...(editingShift ? { shiftId: editingShift.id } : {}),
           orgId: activeOrgId,
           serviceTypeId,
           date: form.date,
@@ -430,11 +435,13 @@ function Breakdown({
   result,
   error,
   onLogAnother,
+  submitLabel,
   hiddenFields,
 }: {
   result: PricingResult | null;
   error: string | null;
   onLogAnother: () => void;
+  submitLabel: string;
   hiddenFields: Record<string, string>;
 }) {
   const [saveState, formAction, pending] = useActionState(saveShiftAction, {});
@@ -515,7 +522,7 @@ function Breakdown({
           </div>
         ) : (
           <button type="submit" className="btn-primary w-full" disabled={!result || pending}>
-            {pending ? 'Saving…' : 'Save shift'}
+            {pending ? 'Saving…' : submitLabel}
           </button>
         )}
       </form>

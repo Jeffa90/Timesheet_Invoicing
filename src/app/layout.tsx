@@ -22,6 +22,7 @@ export const viewport: Viewport = {
 // engagements, so there's no harm showing them to someone who's business-only.
 const WORKER_NAV = [
   { href: '/', label: 'Log a shift' },
+  { href: '/shifts', label: 'My Shifts' },
   { href: '/invoice', label: 'My Invoices' },
   { href: '/profile', label: 'Profile' },
 ] as const;

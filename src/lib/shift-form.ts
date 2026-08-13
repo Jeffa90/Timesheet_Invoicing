@@ -130,3 +130,53 @@ export function buildShiftInput(
 export function todayIn(timezone: string): string {
   return DateTime.now().setZone(timezone).toFormat('yyyy-MM-dd');
 }
+
+/**
+ * The reverse of buildShiftInput — turns a saved shift back into the form
+ * values that would reproduce it, so the edit page can pre-fill from what's
+ * already in the database rather than starting blank.
+ */
+export function shiftToFormValues(shift: {
+  startUtc: Date;
+  endUtc: Date;
+  timezone: string;
+  breaks: unknown;
+  sleepover: unknown;
+  travelKm: number | null;
+  expenses: unknown;
+}): ShiftFormValues {
+  const zone = shift.timezone;
+  const start = DateTime.fromJSDate(shift.startUtc).setZone(zone);
+  const end = DateTime.fromJSDate(shift.endUtc).setZone(zone);
+
+  const breaksArr = (shift.breaks as { startUtc: string; endUtc: string }[] | null) ?? [];
+  const firstBreak = breaksArr[0];
+  const breakStart = firstBreak ? DateTime.fromISO(firstBreak.startUtc).setZone(zone) : null;
+  const breakEnd = firstBreak ? DateTime.fromISO(firstBreak.endUtc).setZone(zone) : null;
+
+  const sleepoverObj = shift.sleepover as
+    | { windowStartUtc: string; windowEndUtc: string; activeSupport?: UtcInterval[] }
+    | null;
+
+  return {
+    date: start.toFormat('yyyy-MM-dd'),
+    startTime: start.toFormat('HH:mm'),
+    endTime: end.toFormat('HH:mm'),
+    hasUnpaidBreak: Boolean(firstBreak),
+    breakStart: breakStart?.toFormat('HH:mm') ?? EMPTY_FORM.breakStart,
+    breakMinutes: breakStart && breakEnd ? Math.round(breakEnd.diff(breakStart, 'minutes').minutes) : EMPTY_FORM.breakMinutes,
+    isOvernight: Boolean(sleepoverObj),
+    sleepoverStart: sleepoverObj
+      ? DateTime.fromISO(sleepoverObj.windowStartUtc).setZone(zone).toFormat('HH:mm')
+      : EMPTY_FORM.sleepoverStart,
+    sleepoverEnd: sleepoverObj
+      ? DateTime.fromISO(sleepoverObj.windowEndUtc).setZone(zone).toFormat('HH:mm')
+      : EMPTY_FORM.sleepoverEnd,
+    activeSupport: (sleepoverObj?.activeSupport ?? []).map((period) => ({
+      start: DateTime.fromISO(period.startUtc).setZone(zone).toFormat('HH:mm'),
+      end: DateTime.fromISO(period.endUtc).setZone(zone).toFormat('HH:mm'),
+    })),
+    travelKm: shift.travelKm ?? 0,
+    expenses: (shift.expenses as ShiftExpense[] | null) ?? [],
+  };
+}

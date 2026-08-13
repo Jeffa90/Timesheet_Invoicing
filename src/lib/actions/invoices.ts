@@ -23,12 +23,15 @@ const schema = z.object({
 
 /**
  * Invoices shifts the worker has logged against this business that aren't
- * already on an invoice. With no period entered, every outstanding shift is
- * included and the period shown on the invoice is just their date range. With
- * a period entered, only shifts whose local date falls inside it are
- * included (the rest stay pending for a later invoice), and the entered
- * dates are used verbatim as the period — so a fixed pay cycle still reads
- * correctly even if no shift lands exactly on its first or last day.
+ * already on an invoice. Three ways to pick which ones:
+ *  - Explicit shiftIds (from the /shifts checklist): invoices exactly those,
+ *    ignoring any period — the period shown is just their own date range.
+ *  - A period entered (no shiftIds): only shifts whose local date falls
+ *    inside it are included (the rest stay pending for later), and the
+ *    entered dates are used verbatim as the period — so a fixed pay cycle
+ *    still reads correctly even if no shift lands exactly on its first or
+ *    last day.
+ *  - Neither: every outstanding shift is included.
  */
 export async function generateInvoiceAction(
   _prev: GenerateInvoiceState,
@@ -47,6 +50,7 @@ export async function generateInvoiceAction(
   if (periodStart && periodEnd && periodStart > periodEnd) {
     return { error: 'Period start must be on or before period end.' };
   }
+  const selectedShiftIds = formData.getAll('shiftIds').map(String).filter(Boolean);
 
   const [org, workerProfile, allPendingShifts] = await Promise.all([
     db.organisation.findUnique({ where: { id: orgId } }),
@@ -58,15 +62,21 @@ export async function generateInvoiceAction(
   if (!workerProfile) return { error: 'Add your invoice details first.' };
   if (allPendingShifts.length === 0) return { error: 'No logged shifts are waiting to be invoiced.' };
 
-  const withDate = allPendingShifts.map((shift) => ({
-    shift,
-    date: DateTime.fromJSDate(shift.startUtc).setZone(shift.timezone).toFormat('yyyy-MM-dd'),
-  }));
-  const pendingShifts = withDate
-    .filter(({ date }) => (!periodStart || date >= periodStart) && (!periodEnd || date <= periodEnd))
-    .map(({ shift }) => shift);
+  const pendingShifts =
+    selectedShiftIds.length > 0
+      ? allPendingShifts.filter((shift) => selectedShiftIds.includes(shift.id))
+      : allPendingShifts
+          .map((shift) => ({ shift, date: DateTime.fromJSDate(shift.startUtc).setZone(shift.timezone).toFormat('yyyy-MM-dd') }))
+          .filter(({ date }) => (!periodStart || date >= periodStart) && (!periodEnd || date <= periodEnd))
+          .map(({ shift }) => shift);
+
   if (pendingShifts.length === 0) {
-    return { error: 'No logged shifts fall within that period.' };
+    return {
+      error:
+        selectedShiftIds.length > 0
+          ? 'Those shifts could not be found, or have already been invoiced.'
+          : 'No logged shifts fall within that period.',
+    };
   }
 
   const shiftsForInvoice = pendingShifts.map((shift) => ({
